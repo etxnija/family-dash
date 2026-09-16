@@ -1,0 +1,4 @@
+[tools]
+# Same Python version as the agent harness — makes `agent` available directly
+# in this directory without needing `mise exec`.
+python = "3.12"
