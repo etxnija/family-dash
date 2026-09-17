@@ -1,3 +1,3 @@
-module family-dash
+module family-dashboard
 
-go 1.25.14
+go 1.25
