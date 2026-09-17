@@ -32,3 +32,6 @@ Session-to-session progress log. Distinct from AGENTS.md (stable rules).
 ## 2026-09-17 — Task 2: SportAdmin ICS adapter with tests and composition-root wiring
 
 - Added `sportadmin` package (`sportadmin.Client` implementing `dashboard.EventSource`) with a line-folding-aware ICS parser (`ParseICS`) handling TZID/bare/UTC/all-day timestamps and RFC 5545 text unescaping; fetch errors never leak the feed URL (`scrubURL` strips it from `*url.Error`). Wired `cmd/family-dashboard/main.go` to read `SPORTADMIN_ICS_URL`, fetch, filter to today, and print. Verified end-to-end against a local HTTP server serving `sportadmin/testdata/sample.ics`.
+
+
+**Run metrics:** 6 driver call(s), $2.5562, session 2319da37-be48-4f5a-800a-b3a91d7c80f9
