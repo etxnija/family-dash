@@ -8,6 +8,11 @@ Language: go
 
 ## Patterns & Conventions
 - (add project-specific patterns here)
+- Domain/service logic lives in the root package (center of hexagon)
+- Each adapter lives in its own package, named after what it adapts
+- Ports (interfaces) are defined in the domain/service package, not the adapter
+- One-way dependency: adapters import domain, never the reverse; `cmd/` wires both via DI
+- Don't scaffold empty adapters/interfaces upfront — apply the structure as real integrations are added
 
 ## Gotchas
 - (add things that have tripped agents up)
