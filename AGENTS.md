@@ -15,7 +15,9 @@ Language: go
 - Don't scaffold empty adapters/interfaces upfront — apply the structure as real integrations are added
 
 ## Gotchas
-- (add things that have tripped agents up)
+- Domain code loads `Europe/Stockholm` via `time.LoadLocation`, which needs the
+  IANA tzdata on the host/image. If we ever build a minimal/scratch container,
+  add `_ "time/tzdata"` as a blank import so the zone is embedded.
 
 ## Testing
 - Sensors (sensors/test.sh, sensors/lint.sh) run automatically after every task; you

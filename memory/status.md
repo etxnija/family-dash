@@ -24,3 +24,11 @@ Session-to-session progress log. Distinct from AGENTS.md (stable rules).
 
 
 **Run metrics:** 8 driver call(s), $2.1093, session 42720221-5117-4679-b3ab-1fcdf18d2817
+
+## 2026-09-17 — Task 1: domain types, today-filter, hexagonal layout
+
+- Moved composition root from root `main.go` to `cmd/family-dashboard/main.go`; added root `package dashboard` with `Event`, `EventSource` port, and `TodayEvents` (Europe/Stockholm date filter) plus table-driven tests in `event_test.go`.
+
+## 2026-09-17 — Task 2: SportAdmin ICS adapter with tests and composition-root wiring
+
+- Added `sportadmin` package (`sportadmin.Client` implementing `dashboard.EventSource`) with a line-folding-aware ICS parser (`ParseICS`) handling TZID/bare/UTC/all-day timestamps and RFC 5545 text unescaping; fetch errors never leak the feed URL (`scrubURL` strips it from `*url.Error`). Wired `cmd/family-dashboard/main.go` to read `SPORTADMIN_ICS_URL`, fetch, filter to today, and print. Verified end-to-end against a local HTTP server serving `sportadmin/testdata/sample.ics`.
