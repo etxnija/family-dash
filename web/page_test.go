@@ -71,7 +71,7 @@ func newPageDataTestCases() []pageDataTestCase {
 func TestNewPageData(t *testing.T) {
 	for _, tt := range newPageDataTestCases() {
 		t.Run(tt.name, func(t *testing.T) {
-			data, err := NewPageData(tt.events, []string{"Kaj", "Lillian"}, tt.now)
+			data, err := NewPageData(tt.events, nil, []string{"Kaj", "Lillian"}, tt.now)
 			if err != nil {
 				t.Fatalf("NewPageData() error = %v", err)
 			}
@@ -90,6 +90,107 @@ func TestNewPageData(t *testing.T) {
 			if data.DateLabel != tt.wantDateLabel {
 				t.Errorf("DateLabel = %q, want %q", data.DateLabel, tt.wantDateLabel)
 			}
+		})
+	}
+}
+
+func assertHomeworkGroups(t *testing.T, got, want []HomeworkGroup) {
+	t.Helper()
+	if len(got) != len(want) {
+		t.Fatalf("Homework = %+v, want %+v", got, want)
+	}
+	for i, wantGroup := range want {
+		gotGroup := got[i]
+		if gotGroup.Owner != wantGroup.Owner {
+			t.Errorf("Homework[%d].Owner = %q, want %q", i, gotGroup.Owner, wantGroup.Owner)
+		}
+		if len(gotGroup.Items) != len(wantGroup.Items) {
+			t.Fatalf("Homework[%d].Items = %+v, want %+v", i, gotGroup.Items, wantGroup.Items)
+		}
+		for j, wantItem := range wantGroup.Items {
+			gotItem := gotGroup.Items[j]
+			if gotItem != wantItem {
+				t.Errorf("Homework[%d].Items[%d] = %+v, want %+v", i, j, gotItem, wantItem)
+			}
+		}
+	}
+}
+
+type homeworkTestCase struct {
+	name           string
+	homeworkEvents []dashboard.Event
+	owners         []string
+	wantGroups     []HomeworkGroup
+}
+
+func newHomeworkTestCases(loc *time.Location) []homeworkTestCase {
+	homeworkEvent := func(owner string, summary string, dayOffset int) dashboard.Event {
+		start := time.Date(2026, 9, 17+dayOffset, 9, 0, 0, 0, loc)
+		return dashboard.Event{Owner: owner, Summary: summary, Start: start}
+	}
+
+	return []homeworkTestCase{
+		{
+			name:           "day label is Due today for an event starting today",
+			homeworkEvents: []dashboard.Event{homeworkEvent("Kaj", "Math worksheet", 0)},
+			owners:         []string{"Kaj"},
+			wantGroups: []HomeworkGroup{
+				{Owner: "Kaj", Items: []HomeworkRow{{Summary: "Math worksheet", DayLabel: "Due today", IsToday: true}}},
+			},
+		},
+		{
+			name:           "day label is Due tomorrow for an event starting tomorrow",
+			homeworkEvents: []dashboard.Event{homeworkEvent("Kaj", "Read ch. 4", 1)},
+			owners:         []string{"Kaj"},
+			wantGroups: []HomeworkGroup{
+				{Owner: "Kaj", Items: []HomeworkRow{{Summary: "Read ch. 4", DayLabel: "Due tomorrow", IsToday: false}}},
+			},
+		},
+		{
+			name:           "day label is the weekday name for day+2 through day+6",
+			homeworkEvents: []dashboard.Event{homeworkEvent("Kaj", "Spelling words", 6)},
+			owners:         []string{"Kaj"},
+			wantGroups: []HomeworkGroup{
+				{Owner: "Kaj", Items: []HomeworkRow{{Summary: "Spelling words", DayLabel: "Wednesday", IsToday: false}}},
+			},
+		},
+		{
+			name:           "owners with no homework events produce no group entry",
+			homeworkEvents: []dashboard.Event{homeworkEvent("Kaj", "Math worksheet", 0)},
+			owners:         []string{"Kaj", "Lillian"},
+			wantGroups: []HomeworkGroup{
+				{Owner: "Kaj", Items: []HomeworkRow{{Summary: "Math worksheet", DayLabel: "Due today", IsToday: true}}},
+			},
+		},
+		{
+			name: "grouping respects the owners slice order",
+			homeworkEvents: []dashboard.Event{
+				homeworkEvent("Lillian", "Spelling words", 0),
+				homeworkEvent("Kaj", "Math worksheet", 0),
+			},
+			owners: []string{"Lillian", "Kaj"},
+			wantGroups: []HomeworkGroup{
+				{Owner: "Lillian", Items: []HomeworkRow{{Summary: "Spelling words", DayLabel: "Due today", IsToday: true}}},
+				{Owner: "Kaj", Items: []HomeworkRow{{Summary: "Math worksheet", DayLabel: "Due today", IsToday: true}}},
+			},
+		},
+	}
+}
+
+func TestNewPageData_Homework(t *testing.T) {
+	loc, err := time.LoadLocation("Europe/Stockholm")
+	if err != nil {
+		t.Fatalf("time.LoadLocation() error = %v", err)
+	}
+	now := time.Date(2026, 9, 17, 12, 0, 0, 0, loc)
+
+	for _, tt := range newHomeworkTestCases(loc) {
+		t.Run(tt.name, func(t *testing.T) {
+			data, err := NewPageData(nil, tt.homeworkEvents, tt.owners, now)
+			if err != nil {
+				t.Fatalf("NewPageData() error = %v", err)
+			}
+			assertHomeworkGroups(t, data.Homework, tt.wantGroups)
 		})
 	}
 }

@@ -6,6 +6,8 @@ import (
 	"embed"
 	"html/template"
 	"io"
+	"math"
+	"sort"
 	"time"
 
 	dashboard "family-dashboard"
@@ -16,6 +18,7 @@ var templateFS embed.FS
 
 var pageTemplate = template.Must(template.New("").Funcs(template.FuncMap{
 	"ownerColor": ownerColor,
+	"dict":       dict,
 }).ParseFS(templateFS, "templates/page.html.tmpl"))
 
 // EventRow is the flattened, display-ready view of a dashboard.Event.
@@ -27,12 +30,27 @@ type EventRow struct {
 	Owner     string
 }
 
+// HomeworkRow is the flattened, display-ready view of a homework
+// dashboard.Event.
+type HomeworkRow struct {
+	Summary  string
+	DayLabel string
+	IsToday  bool
+}
+
+// HomeworkGroup collects the homework items due for a single owner.
+type HomeworkGroup struct {
+	Owner string
+	Items []HomeworkRow
+}
+
 // PageData holds everything the page template needs to render.
 type PageData struct {
 	Weekday   string
 	DateLabel string
 	Events    []EventRow
 	Owners    []string
+	Homework  []HomeworkGroup
 }
 
 // ownerColors maps a known owner name to its CSS custom-property name.
@@ -50,14 +68,40 @@ func ownerColor(name string) string {
 	return "--family"
 }
 
-// NewPageData builds a PageData for events, owners, and now, converting all
-// times to Europe/Stockholm for display.
-func NewPageData(events []dashboard.Event, owners []string, now time.Time) (PageData, error) {
+// dict builds a map from alternating key/value arguments, for passing
+// multiple named values into a template's {{template}} action.
+func dict(values ...any) map[string]any {
+	m := make(map[string]any, len(values)/2)
+	for i := 0; i < len(values)-1; i += 2 {
+		if key, ok := values[i].(string); ok {
+			m[key] = values[i+1]
+		}
+	}
+	return m
+}
+
+// NewPageData builds a PageData for events, homeworkEvents, owners, and now,
+// converting all times to Europe/Stockholm for display.
+func NewPageData(events []dashboard.Event, homeworkEvents []dashboard.Event, owners []string, now time.Time) (PageData, error) {
 	loc, err := time.LoadLocation("Europe/Stockholm")
 	if err != nil {
 		return PageData{}, err
 	}
 
+	localNow := now.In(loc)
+
+	return PageData{
+		Weekday:   localNow.Format("Monday"),
+		DateLabel: localNow.Format("2 January"),
+		Events:    buildEventRows(events, loc),
+		Owners:    owners,
+		Homework:  buildHomeworkGroups(homeworkEvents, owners, localNow, loc),
+	}, nil
+}
+
+// buildEventRows flattens events into display-ready rows, converting times
+// to loc.
+func buildEventRows(events []dashboard.Event, loc *time.Location) []EventRow {
 	rows := make([]EventRow, 0, len(events))
 	for _, e := range events {
 		var timeStr, timeRange string
@@ -80,14 +124,60 @@ func NewPageData(events []dashboard.Event, owners []string, now time.Time) (Page
 			Owner:     e.Owner,
 		})
 	}
+	return rows
+}
 
-	localNow := now.In(loc)
-	return PageData{
-		Weekday:   localNow.Format("Monday"),
-		DateLabel: localNow.Format("2 January"),
-		Events:    rows,
-		Owners:    owners,
-	}, nil
+// buildHomeworkGroups groups homeworkEvents by owner, in owners order, with
+// each item's day label computed relative to localNow.
+func buildHomeworkGroups(homeworkEvents []dashboard.Event, owners []string, localNow time.Time, loc *time.Location) []HomeworkGroup {
+	eventsByOwner := make(map[string][]dashboard.Event, len(owners))
+	for _, e := range homeworkEvents {
+		eventsByOwner[e.Owner] = append(eventsByOwner[e.Owner], e)
+	}
+
+	year, month, day := localNow.Date()
+	todayNoon := time.Date(year, month, day, 12, 0, 0, 0, loc)
+
+	var homework []HomeworkGroup
+	for _, owner := range owners {
+		ownerEvents := eventsByOwner[owner]
+		if len(ownerEvents) == 0 {
+			continue
+		}
+		sort.Slice(ownerEvents, func(i, j int) bool {
+			return ownerEvents[i].Start.Before(ownerEvents[j].Start)
+		})
+
+		items := make([]HomeworkRow, 0, len(ownerEvents))
+		for _, e := range ownerEvents {
+			eventLocal := e.Start.In(loc)
+			ey, em, ed := eventLocal.Date()
+			eventNoon := time.Date(ey, em, ed, 12, 0, 0, 0, loc)
+			offset := int(math.Round(eventNoon.Sub(todayNoon).Hours() / 24))
+
+			items = append(items, HomeworkRow{
+				Summary:  e.Summary,
+				DayLabel: homeworkDayLabel(offset, eventLocal),
+				IsToday:  offset == 0,
+			})
+		}
+		homework = append(homework, HomeworkGroup{Owner: owner, Items: items})
+	}
+	return homework
+}
+
+// homeworkDayLabel returns the display label for a homework item due offset
+// days from today: "Due today", "Due tomorrow", or the Stockholm weekday
+// name of eventDate for offset 2 through 6.
+func homeworkDayLabel(offset int, eventDate time.Time) string {
+	switch offset {
+	case 0:
+		return "Due today"
+	case 1:
+		return "Due tomorrow"
+	default:
+		return eventDate.Weekday().String()
+	}
 }
 
 // Render executes the page template for data into w.

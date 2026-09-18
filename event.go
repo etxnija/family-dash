@@ -3,6 +3,7 @@ package dashboard
 
 import (
 	"context"
+	"strings"
 	"time"
 )
 
@@ -40,6 +41,38 @@ func TodayEvents(events []Event, now time.Time) []Event {
 	for _, e := range events {
 		y, m, d := e.Start.In(loc).Date()
 		if y == year && m == month && d == day {
+			result = append(result, e)
+		}
+	}
+	return result
+}
+
+// homeworkPrefix identifies homework events by their Swedish summary prefix.
+const homeworkPrefix = "Läxa "
+
+// HomeworkEvents returns the events from events whose Summary starts with
+// "Läxa " and whose Start falls within the 7-calendar-day window from now's
+// date through now's date plus 6 days (inclusive), in the Europe/Stockholm
+// timezone.
+func HomeworkEvents(events []Event, now time.Time) []Event {
+	loc, err := time.LoadLocation("Europe/Stockholm")
+	if err != nil {
+		panic(err)
+	}
+
+	today := now.In(loc)
+	year, month, day := today.Date()
+	start := time.Date(year, month, day, 0, 0, 0, 0, loc)
+	end := time.Date(year, month, day+6, 0, 0, 0, 0, loc)
+
+	var result []Event
+	for _, e := range events {
+		if !strings.HasPrefix(e.Summary, homeworkPrefix) {
+			continue
+		}
+		y, m, d := e.Start.In(loc).Date()
+		eventDate := time.Date(y, m, d, 0, 0, 0, 0, loc)
+		if !eventDate.Before(start) && !eventDate.After(end) {
 			result = append(result, e)
 		}
 	}

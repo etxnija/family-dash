@@ -138,43 +138,28 @@
     <div style="flex:1.1; background:var(--card); border:1px solid var(--border); border-radius:22px; padding:24px 24px; display:flex; flex-direction:column; gap:18px; min-width:0;">
       <div>
         <div style="font-family:'Space Grotesk', ui-sans-serif, system-ui, sans-serif; font-size:21px; font-weight:700;">Homework due</div>
-        <div style="font-size:13px; color:var(--muted); margin-top:2px;">Placeholder &mdash; no homework data source yet</div>
       </div>
 
+      {{if not .Homework}}
+      <div style="padding:11px 13px; color:var(--muted); font-size:15px;">No homework this week.</div>
+      {{end}}
+      {{range .Homework}}
       <div style="display:flex; flex-direction:column; gap:10px;">
         <div style="display:flex; align-items:center; gap:8px;">
-          <span style="width:10px; height:10px; border-radius:50%; background:var(--kaj); flex-shrink:0;"></span>
-          <span style="font-size:15px; font-weight:700;">Kaj</span>
+          <span style="width:10px; height:10px; border-radius:50%; background:var({{ownerColor .Owner}}); flex-shrink:0;"></span>
+          <span style="font-size:15px; font-weight:700;">{{.Owner}}</span>
         </div>
+        {{range .Items}}
         <div style="display:flex; align-items:flex-start; gap:11px; padding:11px 13px; border-radius:14px; background:var(--row);">
           <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="var(--muted)" stroke-width="1.8" style="margin-top:2px; flex-shrink:0;"><circle cx="12" cy="12" r="9"></circle></svg>
           <div style="flex:1;">
-            <div style="font-size:15px; font-weight:700;">Math worksheet</div>
-            <div style="font-size:13px; color:var(--text); margin-top:2px; font-weight:600;">Due today</div>
+            <div style="font-size:15px; font-weight:700;">{{.Summary}}</div>
+            <div style="font-size:13px; margin-top:2px; {{if .IsToday}}color:var(--text); font-weight:600;{{else}}color:var(--muted);{{end}}">{{.DayLabel}}</div>
           </div>
         </div>
-        <div style="display:flex; align-items:flex-start; gap:11px; padding:11px 13px; border-radius:14px; background:var(--row);">
-          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="var(--muted)" stroke-width="1.8" style="margin-top:2px; flex-shrink:0;"><circle cx="12" cy="12" r="9"></circle></svg>
-          <div style="flex:1;">
-            <div style="font-size:15px; font-weight:700;">Read ch. 4 &ndash; English</div>
-            <div style="font-size:13px; color:var(--muted); margin-top:2px;">Due tomorrow</div>
-          </div>
-        </div>
+        {{end}}
       </div>
-
-      <div style="display:flex; flex-direction:column; gap:10px;">
-        <div style="display:flex; align-items:center; gap:8px;">
-          <span style="width:10px; height:10px; border-radius:50%; background:var(--lillian); flex-shrink:0;"></span>
-          <span style="font-size:15px; font-weight:700;">Lillian</span>
-        </div>
-        <div style="display:flex; align-items:flex-start; gap:11px; padding:11px 13px; border-radius:14px; background:var(--row);">
-          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="var(--muted)" stroke-width="1.8" style="margin-top:2px; flex-shrink:0;"><circle cx="12" cy="12" r="9"></circle></svg>
-          <div style="flex:1;">
-            <div style="font-size:15px; font-weight:700;">Spelling words</div>
-            <div style="font-size:13px; color:var(--text); margin-top:2px; font-weight:600;">Due today</div>
-          </div>
-        </div>
-      </div>
+      {{end}}
     </div>
 
   </div>
@@ -182,29 +167,21 @@
   <div style="display:flex; flex-direction:column; gap:10px; flex-shrink:0;">
     <div style="font-size:13px; font-weight:800; letter-spacing:0.14em; text-transform:uppercase; color:var(--muted);">Coming up &mdash; placeholder</div>
     <div style="display:flex; gap:16px;">
-      <div style="flex:1; background:var(--row); border:1px dashed var(--border); border-radius:16px; padding:13px 18px; display:flex; flex-direction:column; gap:4px;">
-        <div style="display:flex; align-items:center; gap:8px;">
-          <span style="width:9px; height:9px; border-radius:50%; background:var(--lillian); flex-shrink:0;"></span>
-          <span style="font-size:14px; font-weight:700;">Wednesday</span>
-        </div>
-        <div style="font-size:14px; color:var(--muted);">Lillian &ndash; Soccer game, away &middot; 10:00</div>
-      </div>
-      <div style="flex:1; background:var(--row); border:1px dashed var(--border); border-radius:16px; padding:13px 18px; display:flex; flex-direction:column; gap:4px;">
-        <div style="display:flex; align-items:center; gap:8px;">
-          <span style="width:9px; height:9px; border-radius:50%; background:var(--kaj); flex-shrink:0;"></span>
-          <span style="font-size:14px; font-weight:700;">Thursday</span>
-        </div>
-        <div style="font-size:14px; color:var(--muted);">Kaj &ndash; Floorball tournament, all day</div>
-      </div>
-      <div style="flex:1; background:var(--row); border:1px dashed var(--border); border-radius:16px; padding:13px 18px; display:flex; flex-direction:column; gap:4px;">
-        <div style="display:flex; align-items:center; gap:8px;">
-          <span style="width:9px; height:9px; border-radius:50%; background:var(--family); flex-shrink:0;"></span>
-          <span style="font-size:14px; font-weight:700;">Friday</span>
-        </div>
-        <div style="font-size:14px; color:var(--muted);">Family &ndash; Movie night</div>
-      </div>
+      {{template "comingUpCard" dict "Color" "lillian" "Day" "Wednesday" "Text" "Lillian – Soccer game, away · 10:00"}}
+      {{template "comingUpCard" dict "Color" "kaj" "Day" "Thursday" "Text" "Kaj – Floorball tournament, all day"}}
+      {{template "comingUpCard" dict "Color" "family" "Day" "Friday" "Text" "Family – Movie night"}}
     </div>
   </div>
 
 </body>
 </html>
+
+{{define "comingUpCard"}}
+<div style="flex:1; background:var(--row); border:1px dashed var(--border); border-radius:16px; padding:13px 18px; display:flex; flex-direction:column; gap:4px;">
+  <div style="display:flex; align-items:center; gap:8px;">
+    <span style="width:9px; height:9px; border-radius:50%; background:var(--{{.Color}}); flex-shrink:0;"></span>
+    <span style="font-size:14px; font-weight:700;">{{.Day}}</span>
+  </div>
+  <div style="font-size:14px; color:var(--muted);">{{.Text}}</div>
+</div>
+{{end}}

@@ -3,9 +3,9 @@ type: component
 tags: [main, config, composition-root, multi-source, cmd, http]
 summary: cmd/family-dashboard main() — JSON sources config, HTTP server wiring, per-request fetch with per-source error isolation, and owner tagging.
 links: [docs/arch/adr/0001-config-path-via-required-flag.md, webcal-adapter.md]
-updated: 2026-09-18
+updated: 2026-09-18 (homework panel wiring)
 generated: { by: worker, at: 2026-09-18T00:00:00Z }
-verified: [{ by: "human", at: 2026-09-18 }, { by: "human", at: 2026-09-18 }, { by: "human", at: 2026-09-18 }]
+verified: [{ by: "human", at: 2026-09-18 }, { by: "human", at: 2026-09-18 }, { by: "human", at: 2026-09-18 }, { by: "human", at: 2026-09-18 }]
 ---
 
 # Composition Root (`cmd/family-dashboard`)
@@ -51,8 +51,11 @@ a separate `-addr` flag (default `:8080`).
   (not `context.Background()`) so a client disconnect cancels in-flight
   fetches.
 - Successfully fetched events are tagged via `dashboard.WithOwner(events,
-  cfg.Name)` before being appended to the combined slice, then filtered
-  with `dashboard.TodayEvents` and handed to `web.NewPageData` /
+  cfg.Name)` before being appended to the combined slice, then filtered two
+  ways from the same combined slice: `dashboard.TodayEvents` for the
+  schedule panel and `dashboard.HomeworkEvents` for the homework panel
+  (7-day window, `"Läxa "`-prefixed summaries). Both filtered slices are
+  handed to `web.NewPageData(today, homework, owners, time.Now())` /
   `web.Render` (see [webcal-adapter.md](webcal-adapter.md) sibling pattern
   in the `web` package) to produce the HTML response.
 - Tests split along the same boundary: `config/config_test.go` (`package

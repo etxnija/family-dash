@@ -100,6 +100,75 @@ func TestTodayEvents(t *testing.T) {
 	}
 }
 
+func homeworkEventsFixtures(loc *time.Location) (dayZero, daySix, daySeven, sportsAllDay dashboard.Event) {
+	dayZero = dashboard.Event{
+		Summary: "Läxa matte",
+		Start:   time.Date(2026, 9, 17, 9, 0, 0, 0, loc),
+		End:     time.Date(2026, 9, 17, 10, 0, 0, 0, loc),
+	}
+	daySix = dashboard.Event{
+		Summary: "Läxa engelska",
+		Start:   time.Date(2026, 9, 23, 9, 0, 0, 0, loc),
+		End:     time.Date(2026, 9, 23, 10, 0, 0, 0, loc),
+	}
+	daySeven = dashboard.Event{
+		Summary: "Läxa svenska",
+		Start:   time.Date(2026, 9, 24, 9, 0, 0, 0, loc),
+		End:     time.Date(2026, 9, 24, 10, 0, 0, 0, loc),
+	}
+	sportsAllDay = dashboard.Event{
+		Summary: "Fotbollsträning",
+		AllDay:  true,
+		Start:   time.Date(2026, 9, 18, 0, 0, 0, 0, loc),
+		End:     time.Date(2026, 9, 19, 0, 0, 0, 0, loc),
+	}
+	return dayZero, daySix, daySeven, sportsAllDay
+}
+
+func TestHomeworkEvents(t *testing.T) {
+	loc := stockholm()
+	now := time.Date(2026, 9, 17, 12, 0, 0, 0, loc)
+	dayZero, daySix, daySeven, sportsAllDay := homeworkEventsFixtures(loc)
+
+	tests := []struct {
+		name   string
+		events []dashboard.Event
+		want   []dashboard.Event
+	}{
+		{
+			name:   "homework event today is included",
+			events: []dashboard.Event{dayZero},
+			want:   []dashboard.Event{dayZero},
+		},
+		{
+			name:   "homework event on day 6 boundary is included",
+			events: []dashboard.Event{daySix},
+			want:   []dashboard.Event{daySix},
+		},
+		{
+			name:   "homework event on day 7 is excluded",
+			events: []dashboard.Event{daySeven},
+			want:   nil,
+		},
+		{
+			name:   "non-homework event within window is excluded",
+			events: []dashboard.Event{sportsAllDay},
+			want:   nil,
+		},
+		{
+			name:   "empty input returns nil",
+			events: []dashboard.Event{},
+			want:   nil,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assertTodayEvents(t, dashboard.HomeworkEvents(tt.events, now), tt.want)
+		})
+	}
+}
+
 func assertOwners(t *testing.T, got []dashboard.Event, want []string) {
 	t.Helper()
 	if len(got) != len(want) {
