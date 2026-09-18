@@ -17,6 +17,22 @@ Language: go
 - Structured logs go to stderr (`slog.NewJSONHandler(os.Stderr, nil)`); stdout is reserved for the program's real output, so the two never interleave.
 - Log key facts as structured fields (counts, IDs, error causes), not just a bare message.
 
+## Memory model
+
+- Everything under `memory/` (`status.md`, `memory/concepts/*.md`), this file, and
+  `docs/arch/adr/*.md` is **project memory, not personal notes** — git-tracked, reviewed
+  like code, meant for any future contributor or agent working this repo, not just whoever
+  wrote it.
+- `memory/concepts/*.md` and `docs/arch/adr/*.md` are the durable layer: topic-scoped,
+  YAML-tagged (concepts), immutable-once-accepted (ADRs). This is what gets fed to agents
+  as bounded context — keep it current, not `status.md`.
+- `memory/status.md` is the raw chronological log — append-only, currently unattributed
+  (no author/session field). Treat entries as project history, not a personal journal, even
+  though nothing yet records who or which run wrote them.
+- Plain markdown in git was a deliberate choice: portable across AI tools/drivers (no
+  vendor lock-in to any one tool's native memory) and shareable across contributors with
+  the same git workflow as code — one structure serving both goals.
+
 ## Gotchas
 - Domain code loads `Europe/Stockholm` via `time.LoadLocation`, which needs the
   IANA tzdata on the host/image. If we ever build a minimal/scratch container,
@@ -27,6 +43,18 @@ Language: go
   do not need a task for this
 - New code must have tests; do not delete tests to make coverage pass
 - Use table-driven tests (see existing *_test.go files for examples)
+
+## ADR conventions
+
+- Short and sharp: ~20-30 lines total. If a draft runs past ~40 lines, cut it, don't
+  scope-expand it.
+- **Context**: one short paragraph — the problem/constraint, not a transcript of the
+  design discussion that led to the decision.
+- **Decision**: a few lines, imperative mood. The choice itself, not the reasoning
+  (that's Context) or the alternatives (mention a rejected one in a single line only
+  if it stops someone from re-litigating it later).
+- **Consequences**: a bullet list, one line each. Trade-offs accepted, not restated
+  rationale.
 
 ## Style
 - Follow the existing code style in the repo
