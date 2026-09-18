@@ -118,3 +118,6 @@ Session-to-session progress log. Distinct from AGENTS.md (stable rules).
 ## 2026-09-18 — Task: Homework due panel end to end
 
 - Added `HomeworkEvents(events, now)` to `event.go` (7-calendar-day window, `Läxa ` summary prefix, Europe/Stockholm) with table-driven tests in `event_test.go`; added `HomeworkRow`/`HomeworkGroup`/`PageData.Homework` to `web/page.go`, changed `NewPageData` to take a `homeworkEvents` parameter and build per-owner groups (sorted by `Start`, day labels "Due today"/"Due tomorrow"/weekday name via noon-to-noon offset to dodge DST rounding), with `TestNewPageData_Homework` covering label/ordering/empty-owner cases; replaced the hardcoded homework panel markup in `web/templates/page.html.tmpl` with `{{range .Homework}}`/`{{range .Items}}` and an empty-state message; wired `dashboard.HomeworkEvents` + updated `web.NewPageData` call into `cmd/family-dashboard/main.go`'s handler. `go build`, `go vet`, `go test ./...`, and `sensors/test.sh`/`sensors/lint.sh` all pass; manually rendered the page with fixture homework events to confirm labels and owner grouping.
+
+
+**Run metrics:** 5 driver call(s), $3.1236, session 5ad27b0f-bfef-4caa-9b8b-a76529910aeb
