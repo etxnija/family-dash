@@ -70,6 +70,8 @@ func buildSource(cfg config.Source) (dashboard.EventSource, error) {
 	switch cfg.Type {
 	case "sportadmin":
 		return webcal.New(cfg.URL, http.DefaultClient), nil
+	case "infomentor":
+		return webcal.New(cfg.URL, http.DefaultClient), nil
 	default:
 		return nil, fmt.Errorf("config: unknown source type %q for %q", cfg.Type, cfg.Name)
 	}

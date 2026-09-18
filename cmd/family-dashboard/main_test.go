@@ -17,6 +17,10 @@ func TestBuildSource(t *testing.T) {
 			cfg:  config.Source{Name: "alice", Type: "sportadmin", URL: "https://example.com/feed.ics"},
 		},
 		{
+			name: "known type infomentor",
+			cfg:  config.Source{Name: "alice", Type: "infomentor", URL: "https://example.com/feed.ics"},
+		},
+		{
 			name:    "unknown type",
 			cfg:     config.Source{Name: "bob", Type: "carrier-pigeon", URL: "https://example.com/feed.ics"},
 			wantErr: true,

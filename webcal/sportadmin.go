@@ -1,5 +1,5 @@
 // Package webcal adapts ICS ("webcal") calendar feeds to the
-// dashboard.EventSource port. SportAdmin is the first concrete source.
+// dashboard.EventSource port. SportAdmin and InfoMentor both use this package.
 package webcal
 
 import (
@@ -43,22 +43,22 @@ func (c *Client) Events(ctx context.Context) ([]dashboard.Event, error) {
 func (c *Client) fetch(ctx context.Context) ([]byte, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.url, nil)
 	if err != nil {
-		return nil, fmt.Errorf("sportadmin: build request: %w", scrubURL(err))
+		return nil, fmt.Errorf("webcal: build request: %w", scrubURL(err))
 	}
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("sportadmin: fetch calendar feed: %w", scrubURL(err))
+		return nil, fmt.Errorf("webcal: fetch calendar feed: %w", scrubURL(err))
 	}
 	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return nil, fmt.Errorf("sportadmin: calendar feed returned status %d", resp.StatusCode)
+		return nil, fmt.Errorf("webcal: calendar feed returned status %d", resp.StatusCode)
 	}
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return nil, fmt.Errorf("sportadmin: read calendar feed: %w", scrubURL(err))
+		return nil, fmt.Errorf("webcal: read calendar feed: %w", scrubURL(err))
 	}
 	return body, nil
 }
@@ -111,7 +111,7 @@ func ParseICS(data []byte) ([]dashboard.Event, error) {
 				continue
 			}
 			if !inVevent {
-				return nil, errors.New("sportadmin: END:VEVENT without matching BEGIN:VEVENT")
+				return nil, errors.New("webcal: END:VEVENT without matching BEGIN:VEVENT")
 			}
 			event, err := cur.build()
 			if err != nil {
@@ -149,7 +149,7 @@ func ParseICS(data []byte) ([]dashboard.Event, error) {
 	}
 
 	if inVevent {
-		return nil, errors.New("sportadmin: unterminated VEVENT block")
+		return nil, errors.New("webcal: unterminated VEVENT block")
 	}
 	return events, nil
 }
@@ -159,7 +159,7 @@ func ParseICS(data []byte) ([]dashboard.Event, error) {
 // doesn't need to schedule to the minute.
 func (b eventBuilder) build() (*dashboard.Event, error) {
 	if !b.hasDTStart {
-		return nil, errors.New("sportadmin: VEVENT missing DTSTART")
+		return nil, errors.New("webcal: VEVENT missing DTSTART")
 	}
 	if b.dtstartParams["VALUE"] == "DATE" {
 		return nil, nil
@@ -167,14 +167,14 @@ func (b eventBuilder) build() (*dashboard.Event, error) {
 
 	start, err := parseICSTime(b.dtstartValue, b.dtstartParams)
 	if err != nil {
-		return nil, fmt.Errorf("sportadmin: parse DTSTART: %w", err)
+		return nil, fmt.Errorf("webcal: parse DTSTART: %w", err)
 	}
 
 	var end time.Time
 	if b.hasDTEnd && b.dtendParams["VALUE"] != "DATE" {
 		end, err = parseICSTime(b.dtendValue, b.dtendParams)
 		if err != nil {
-			return nil, fmt.Errorf("sportadmin: parse DTEND: %w", err)
+			return nil, fmt.Errorf("webcal: parse DTEND: %w", err)
 		}
 	}
 
