@@ -1,31 +1,28 @@
 # Family Dashboard
 
-A shared, always-visible information display for our household: two parents,
-two kids (11 and 13). The goal is a single screen that answers "what's
-happening today?" — sports practice, family calendar events, school times,
-homework due, weather — without anyone having to open four different apps or
-ask around out loud. Success isn't a metric, it's simpler: fewer "what's
-happening today?" questions asked in the house once this is actually running
-on a screen someone looks at.
+A shared, always-visible information display for our household: two parents, two kids (11 and 13). The goal is a single
+screen that answers "what's happening today?" — sports practice, family calendar events, school times, homework due,
+weather — without anyone having to open four different apps or ask around out loud. Success isn't a metric, it's
+simpler: fewer "what's happening today?" questions asked in the house once this is actually running on a screen someone
+looks at.
 
 ## Inspiration
 
-Sparked by [this nyteknik.se piece](https://www.nyteknik.se/kroenikor/1-500-kronor-och-en-raspberry-pi-senare-nu-har-familjen-en-e-ink-dashboard/4487700)
-on a DIY Raspberry Pi + e-ink family dashboard. The e-ink/Pi hardware build is
-a real future direction (see Roadmap below) but deferred — this project
-starts with the data and a browser page on an iPad already at home, and is
-architected so the display layer (browser now, e-ink later) and the hosting
-location (dev machine now, Raspberry Pi later) can both change without
-rewriting the data layer.
+Sparked by
+[this nyteknik.se piece](https://www.nyteknik.se/kroenikor/1-500-kronor-och-en-raspberry-pi-senare-nu-har-familjen-en-e-ink-dashboard/4487700)
+on a DIY Raspberry Pi + e-ink family dashboard. The e-ink/Pi hardware build is a real future direction (see Roadmap
+below) but deferred — this project starts with the data and a browser page on an iPad already at home, and is
+architected so the display layer (browser now, e-ink later) and the hosting location (dev machine now, Raspberry Pi
+later) can both change without rewriting the data layer.
 
-The full product requirements (goal, success criteria, phased rollout, open
-questions) live in the PRD, not here — see `~/Documents/nils/PRD/Family
+The full product requirements (goal, success criteria, phased rollout, open questions) live in the PRD, not here — see
+`~/Documents/nils/PRD/Family
 dashboard.md`.
 
 ## Structure
 
-Hexagonal architecture, kept deliberately minimal — domain in the root
-package, one package per adapter, composition only in `cmd/`:
+Hexagonal architecture, kept deliberately minimal — domain in the root package, one package per adapter, composition
+only in `cmd/`:
 
 ```
 event.go                       domain: Event type, EventSource port, TodayEvents()
@@ -54,16 +51,13 @@ sensors/
 mise.toml                      pinned toolchain versions (go, golangci-lint)
 ```
 
-`event.go`'s domain package owns the `EventSource` port; `webcal` is the
-adapter implementing it (SportAdmin is the first concrete feed, more can be
-added as their own files in the same package — see
-`memory/concepts/webcal-adapter.md` for why). `cmd/family-dashboard` is the
-only place that imports both and wires them together — that's the dependency
+`event.go`'s domain package owns the `EventSource` port; `webcal` is the adapter implementing it (SportAdmin is the
+first concrete feed, more can be added as their own files in the same package — see `memory/concepts/webcal-adapter.md`
+for why). `cmd/family-dashboard` is the only place that imports both and wires them together — that's the dependency
 rule this project follows: adapters depend on the domain, never the reverse.
 
-This project is built using the ["agent-work"](../agent-work) coding harness —
-`AGENTS.md` and `memory/status.md` are its convention/history files, not
-optional documentation.
+This project is built using the ["agent-work"](../agent-work) coding harness — `AGENTS.md` and `memory/status.md` are
+its convention/history files, not optional documentation.
 
 ## Running the app
 
@@ -73,17 +67,16 @@ Requires [mise](https://mise.jdx.dev/) for the pinned Go toolchain:
 mise install          # installs the Go version pinned in mise.toml
 ```
 
-The app needs your SportAdmin calendar subscription URL as an environment
-variable — it's a secret (the link embeds a private token) and must never be
-committed or logged:
+The app needs your SportAdmin calendar subscription URL as an environment variable — it's a secret (the link embeds a
+private token) and must never be committed or logged:
 
 ```bash
 export SPORTADMIN_ICS_URL="https://portalweb.sportadmin.se/webcal?id=..."
 go run ./cmd/family-dashboard
 ```
 
-This fetches the feed, filters to today's events (Europe/Stockholm time), and
-prints each one to stdout — there's no web page yet, see Roadmap.
+This fetches the feed, filters to today's events (Europe/Stockholm time), and prints each one to stdout — there's no web
+page yet, see Roadmap.
 
 ## Running tests
 
@@ -92,20 +85,16 @@ sensors/test.sh    # go test ./... -race -count=1
 sensors/lint.sh    # golangci-lint run ./...
 ```
 
-The `webcal` adapter's tests run against a checked-in fixture
-(`webcal/testdata/sample.ics`), not the live network — no real feed URL or
-credentials are needed to run the test suite.
+The `webcal` adapter's tests run against a checked-in fixture (`webcal/testdata/sample.ics`), not the live network — no
+real feed URL or credentials are needed to run the test suite.
 
 ## Roadmap
 
 Per the PRD's phased rollout:
 
-- **Phase 1 (in progress):** data sources + the web page, running locally.
-  SportAdmin (sports calendar) is done; Google Calendar (family events) and
-  weather are next, then the actual browser page.
-- **Phase 2:** relocate the working Phase 1 backend + page to a Raspberry Pi
-  for always-on home hosting.
-- **Phase 3:** school data source (InfoMentor), once its integration
-  reliability/credential tradeoffs are settled.
-- **Phase 4 (future, unscheduled):** swap the browser page for an e-ink
-  display — the original inspiration, deferred for now.
+- **Phase 1 (in progress):** data sources + the web page, running locally. SportAdmin (sports calendar) is done; Google
+  Calendar (family events) and weather are next, then the actual browser page.
+- **Phase 2:** relocate the working Phase 1 backend + page to a Raspberry Pi for always-on home hosting.
+- **Phase 3:** school data source (InfoMentor), once its integration reliability/credential tradeoffs are settled.
+- **Phase 4 (future, unscheduled):** swap the browser page for an e-ink display — the original inspiration, deferred for
+  now.
