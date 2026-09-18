@@ -1,4 +1,4 @@
-// Command family-dashboard is the composition root: it wires the SportAdmin
+// Command family-dashboard is the composition root: it wires the webcal
 // adapter to the domain and prints today's events.
 package main
 
@@ -10,7 +10,7 @@ import (
 	"time"
 
 	dashboard "family-dashboard"
-	"family-dashboard/sportadmin"
+	"family-dashboard/webcal"
 )
 
 func main() {
@@ -20,7 +20,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	source := sportadmin.New(icsURL, http.DefaultClient)
+	source := webcal.New(icsURL, http.DefaultClient)
 
 	events, err := source.Events(context.Background())
 	if err != nil {

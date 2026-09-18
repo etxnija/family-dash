@@ -35,3 +35,11 @@ Session-to-session progress log. Distinct from AGENTS.md (stable rules).
 
 
 **Run metrics:** 6 driver call(s), $2.5562, session 2319da37-be48-4f5a-800a-b3a91d7c80f9
+
+## 2026-09-18 — Task 1 (rename): sportadmin package renamed to webcal
+
+- Moved `sportadmin/` → `webcal/` (files stay named `sportadmin.go`/`sportadmin_test.go`/`testdata/sample.ics`, since they identify the source within the adapter); changed `package sportadmin` → `package webcal`, updated imports/refs in `cmd/family-dashboard/main.go`; kept `sportadmin:` error prefixes and `SPORTADMIN_ICS_URL` env var unchanged. Renamed concept doc `sportadmin-adapter.md` → `webcal-adapter.md`. `go build`, `go vet`, `go test ./...` all pass.
+
+## 2026-09-18 — Task 2: Update concept documentation for webcal rename
+
+- Verified this task's scope (`sportadmin-adapter.md` → `webcal-adapter.md` rename, frontmatter/heading/body updates, `index.md` entry) was already completed as part of the prior "Task 1 (rename)" commit — no further changes needed.

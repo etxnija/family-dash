@@ -1,19 +1,24 @@
 ---
 type: component
-tags: [sportadmin, ics, adapter, hexagonal]
-summary: SportAdmin ICS calendar adapter — parsing rules, timezone handling, and URL-secrecy discipline.
+tags: [webcal, sportadmin, ics, adapter, hexagonal]
+summary: webcal ICS calendar adapter (SportAdmin source) — parsing rules, timezone handling, and URL-secrecy discipline.
 links: [AGENTS.md]
-updated: 2026-09-17
-generated: { by: worker, at: 2026-09-17T00:00:00Z }
-verified: [{ by: "human", at: 2026-09-17 }]
+updated: 2026-09-18
+generated: { by: worker, at: 2026-09-18T00:00:00Z }
+verified: [{ by: "human", at: 2026-09-17 }, { by: "human", at: 2026-09-18 }]
 ---
 
-# SportAdmin ICS Adapter
+# webcal ICS Adapter
 
 ## Context & Rationale
-`sportadmin` is the first real adapter in the hexagon (`sportadmin/sportadmin.go`),
-implementing `dashboard.EventSource` by fetching and parsing a SportAdmin ICS
-calendar feed. It sets the pattern later adapters should follow.
+`webcal` is the first real adapter in the hexagon (`webcal/sportadmin.go`),
+implementing `dashboard.EventSource` by fetching and parsing an ICS calendar
+feed. It sets the pattern later adapters should follow. The package is named
+`webcal` after the adapter *type* (ICS/webcal feeds in general); SportAdmin is
+just the first concrete source, which is why the file is still named
+`sportadmin.go` and error prefixes/env vars (`SPORTADMIN_ICS_URL`) still say
+`sportadmin` — those identify the source, not the package. A second source
+would add its own file (e.g. `webcal/otherfeed.go`) alongside this one.
 
 ## Key Rules & Mechanics
 - `New(url, *http.Client)` takes the client as a parameter so tests inject a

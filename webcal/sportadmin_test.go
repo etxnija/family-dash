@@ -1,4 +1,4 @@
-package sportadmin_test
+package webcal_test
 
 import (
 	"context"
@@ -9,7 +9,7 @@ import (
 	"time"
 
 	dashboard "family-dashboard"
-	"family-dashboard/sportadmin"
+	"family-dashboard/webcal"
 )
 
 func stockholm(t *testing.T) *time.Location {
@@ -28,7 +28,7 @@ func TestParseICS_NormalEvents(t *testing.T) {
 	}
 	loc := stockholm(t)
 
-	got, err := sportadmin.ParseICS(data)
+	got, err := webcal.ParseICS(data)
 	if err != nil {
 		t.Fatalf("ParseICS() error = %v", err)
 	}
@@ -79,7 +79,7 @@ PRODID:-//SportAdmin//Kalender//SV
 CALSCALE:GREGORIAN
 END:VCALENDAR
 `
-	got, err := sportadmin.ParseICS([]byte(feed))
+	got, err := webcal.ParseICS([]byte(feed))
 	if err != nil {
 		t.Fatalf("ParseICS() error = %v", err)
 	}
@@ -100,7 +100,7 @@ func TestParseICS_LineFolding(t *testing.T) {
 		"END:VEVENT\r\n" +
 		"END:VCALENDAR\r\n"
 
-	got, err := sportadmin.ParseICS([]byte(feed))
+	got, err := webcal.ParseICS([]byte(feed))
 	if err != nil {
 		t.Fatalf("ParseICS() error = %v", err)
 	}
@@ -147,7 +147,7 @@ func TestParseICS_MalformedEvent(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			_, err := sportadmin.ParseICS([]byte(tt.feed))
+			_, err := webcal.ParseICS([]byte(tt.feed))
 			if err == nil {
 				t.Fatal("ParseICS() error = nil, want error")
 			}
@@ -178,7 +178,7 @@ func TestEvents_HTTPError(t *testing.T) {
 		},
 	}
 
-	c := sportadmin.New(secretURL, client)
+	c := webcal.New(secretURL, client)
 	_, err := c.Events(context.Background())
 	if err == nil {
 		t.Fatal("Events() error = nil, want error")

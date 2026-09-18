@@ -1,6 +1,6 @@
-// Package sportadmin adapts SportAdmin's public ICS calendar feed to the
-// dashboard.EventSource port.
-package sportadmin
+// Package webcal adapts ICS ("webcal") calendar feeds to the
+// dashboard.EventSource port. SportAdmin is the first concrete source.
+package webcal
 
 import (
 	"context"
