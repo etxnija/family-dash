@@ -72,3 +72,6 @@ Session-to-session progress log. Distinct from AGENTS.md (stable rules).
 ## 2026-09-18 — Task: Add example config and .gitignore
 
 - Added `sources.local.example.json` (placeholder single-source array matching `sourceConfig`'s JSON shape) and `.gitignore` ignoring `/sources.local.json` (real subscription URLs) and `/family-dashboard` (compiled binary). `go build`, `go vet` pass.
+
+
+**Run metrics:** 7 driver call(s), $1.8704, session ded6d7c2-cf7d-4a68-a6a5-df3423c168d9
