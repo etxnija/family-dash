@@ -86,3 +86,6 @@ Session-to-session progress log. Distinct from AGENTS.md (stable rules).
 ## 2026-09-18 — Task: Add InfoMentor source type and rename error prefixes
 
 - Added `case "infomentor":` to `buildSource` in `cmd/family-dashboard/main.go` (identical `webcal.New` wiring to sportadmin); updated `webcal/sportadmin.go`'s package doc comment and renamed all 8 `"sportadmin:"` error-message prefixes to `"webcal:"` in `fetch`, `ParseICS`, and `build`; added a `"known type infomentor"` case to `TestBuildSource`; added an InfoMentor entry to `sources.local.example.json`. Updated `webcal-adapter.md` to describe both sources sharing `buildSource` and the source-agnostic `webcal:` error prefix. `go build`, `go vet`, `go test ./...` all pass.
+
+
+**Run metrics:** 6 driver call(s), $2.4487, session 1e839ac9-41e6-4047-9da6-8811d387323e
