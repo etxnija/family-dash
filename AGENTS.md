@@ -13,6 +13,9 @@ Language: go
 - Ports (interfaces) are defined in the domain/service package, not the adapter
 - One-way dependency: adapters import domain, never the reverse; `cmd/` wires both via DI
 - Don't scaffold empty adapters/interfaces upfront — apply the structure as real integrations are added
+- Use `log/slog` (stdlib) for structured logging — Info for normal operational events, Error for failures. Don't use `fmt.Println`/`fmt.Fprintln` for anything except the program's actual output.
+- Structured logs go to stderr (`slog.NewJSONHandler(os.Stderr, nil)`); stdout is reserved for the program's real output, so the two never interleave.
+- Log key facts as structured fields (counts, IDs, error causes), not just a bare message.
 
 ## Gotchas
 - Domain code loads `Europe/Stockholm` via `time.LoadLocation`, which needs the
