@@ -11,6 +11,7 @@ type Event struct {
 	Summary     string
 	Location    string
 	Description string
+	Owner       string
 	// Start is always UTC.
 	Start time.Time
 	// End is always UTC.
@@ -40,6 +41,16 @@ func TodayEvents(events []Event, now time.Time) []Event {
 		if y == year && m == month && d == day {
 			result = append(result, e)
 		}
+	}
+	return result
+}
+
+// WithOwner returns a new slice with Owner set to owner on every event.
+func WithOwner(events []Event, owner string) []Event {
+	var result []Event
+	for _, e := range events {
+		e.Owner = owner
+		result = append(result, e)
 	}
 	return result
 }

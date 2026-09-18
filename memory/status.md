@@ -60,3 +60,15 @@ Session-to-session progress log. Distinct from AGENTS.md (stable rules).
 
 
 **Run metrics:** 6 driver call(s), $1.8713, session 8968eb8c-f437-4f4c-a2b1-bd9c651bbfcd
+
+## 2026-09-18 — Task: Add Owner field and WithOwner helper to domain
+
+- Added `Owner string` to `Event` (`event.go`) and a pure `WithOwner(events []Event, owner string) []Event` helper that returns a new slice with `Owner` set on every element, following the same style as `TodayEvents`; added table-driven tests in `event_test.go` covering non-empty, empty, and overwrite-existing-owner cases. `go build`, `go vet`, `go test ./...` all pass.
+
+## 2026-09-18 — Task: Add config loading, source builder, and rewrite main()
+
+- Added `cmd/family-dashboard/config.go` (`sourceConfig`, `loadSources`, `buildSource`) and table-driven `config_test.go`; rewrote `main.go` to use a required `-config` flag (ADR-0001), loop over configured sources building each with `buildSource`, log+`continue` on a per-source `buildSource`/`Events` failure instead of aborting, tag fetched events with `dashboard.WithOwner`, and print today's events with an owner prefix. Added `memory/concepts/composition-root.md`. `go build`, `go vet`, `go test ./... -race`, and `sensors/lint.sh` all pass.
+
+## 2026-09-18 — Task: Add example config and .gitignore
+
+- Added `sources.local.example.json` (placeholder single-source array matching `sourceConfig`'s JSON shape) and `.gitignore` ignoring `/sources.local.json` (real subscription URLs) and `/family-dashboard` (compiled binary). `go build`, `go vet` pass.

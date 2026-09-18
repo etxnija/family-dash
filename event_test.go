@@ -99,3 +99,54 @@ func TestTodayEvents(t *testing.T) {
 		})
 	}
 }
+
+func assertOwners(t *testing.T, got []dashboard.Event, want []string) {
+	t.Helper()
+	if len(got) != len(want) {
+		t.Fatalf("WithOwner() = %v, want %d events", got, len(want))
+	}
+	for i := range got {
+		if got[i].Owner != want[i] {
+			t.Errorf("WithOwner()[%d].Owner = %q, want %q", i, got[i].Owner, want[i])
+		}
+	}
+}
+
+func TestWithOwner(t *testing.T) {
+	tests := []struct {
+		name   string
+		events []dashboard.Event
+		owner  string
+		want   []string
+	}{
+		{
+			name: "non-empty slice gets owner set on all elements",
+			events: []dashboard.Event{
+				{Summary: "first"},
+				{Summary: "second"},
+			},
+			owner: "alice",
+			want:  []string{"alice", "alice"},
+		},
+		{
+			name:   "empty slice returns nil",
+			events: []dashboard.Event{},
+			owner:  "alice",
+			want:   nil,
+		},
+		{
+			name: "existing owner is overwritten",
+			events: []dashboard.Event{
+				{Summary: "first", Owner: "bob"},
+			},
+			owner: "alice",
+			want:  []string{"alice"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assertOwners(t, dashboard.WithOwner(tt.events, tt.owner), tt.want)
+		})
+	}
+}
