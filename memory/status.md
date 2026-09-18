@@ -108,5 +108,9 @@ Session-to-session progress log. Distinct from AGENTS.md (stable rules).
 
 **Run metrics:** 7 driver call(s), $2.6203, session 6cafc61f-bba5-4888-b2d7-02ba45fcf72b
 
+## 2026-09-18 — Task: Support all-day events end-to-end
+
+- Added `AllDay bool` to `Event` (`event.go`); added `parseICSDate` (`webcal/sportadmin.go`), which detects all-day DTSTART/DTEND values by attempting `time.Parse("20060102", value)` rather than inspecting the `VALUE=DATE` param, and reinterprets the parsed date as midnight Europe/Stockholm converted to UTC; `build()` now produces a real (non-nil) `Event` for all-day VEVENTs with `AllDay: true`, and a date-only DTEND is parsed-and-discarded (leaves `End` zero, multi-day spans out of scope). `web.NewPageData` renders `Time`/`TimeRange` as `"All day"` when `e.AllDay`. Updated `TestParseICS_NormalEvents` to expect the sample feed's third (all-day "Helgcup") event; added `TestParseICS_AllDayWithoutValueParam`/`TestParseICS_AllDayWithValueParam` to confirm detection is parse-based, not param-based; added an all-day case to `TestNewPageData`. Updated `webcal-adapter.md`'s all-day section. `go build`, `go vet`, `go test ./...`, `gofmt -l .` all clean.
+
 
 **Run metrics:** 5 driver call(s), $3.1380, session 50029c4d-c952-405f-8685-3781617539af

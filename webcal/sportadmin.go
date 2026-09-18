@@ -100,6 +100,28 @@ type eventBuilder struct {
 	dtendParams   map[string]string
 }
 
+// setProperty records a single VEVENT property (SUMMARY, LOCATION,
+// DESCRIPTION, DTSTART, or DTEND) onto the builder. Unrecognized property
+// names are ignored.
+func (b *eventBuilder) setProperty(name string, params map[string]string, value string) {
+	switch name {
+	case "SUMMARY":
+		b.summary = unescapeText(value)
+	case "LOCATION":
+		b.location = unescapeText(value)
+	case "DESCRIPTION":
+		b.description = unescapeText(value)
+	case "DTSTART":
+		b.hasDTStart = true
+		b.dtstartValue = value
+		b.dtstartParams = params
+	case "DTEND":
+		b.hasDTEnd = true
+		b.dtendValue = value
+		b.dtendParams = params
+	}
+}
+
 // ParseICS parses raw ICS calendar data into dashboard events. It returns an
 // error only for genuinely malformed input (unterminated VEVENT blocks,
 // unparsable timestamps, or a VEVENT missing DTSTART) — a feed with zero
@@ -135,29 +157,9 @@ func ParseICS(data []byte) ([]dashboard.Event, error) {
 				events = append(events, *event)
 			}
 			inVevent = false
-		case "SUMMARY":
+		default:
 			if inVevent {
-				cur.summary = unescapeText(value)
-			}
-		case "LOCATION":
-			if inVevent {
-				cur.location = unescapeText(value)
-			}
-		case "DESCRIPTION":
-			if inVevent {
-				cur.description = unescapeText(value)
-			}
-		case "DTSTART":
-			if inVevent {
-				cur.hasDTStart = true
-				cur.dtstartValue = value
-				cur.dtstartParams = params
-			}
-		case "DTEND":
-			if inVevent {
-				cur.hasDTEnd = true
-				cur.dtendValue = value
-				cur.dtendParams = params
+				cur.setProperty(name, params, value)
 			}
 		}
 	}
@@ -169,26 +171,30 @@ func ParseICS(data []byte) ([]dashboard.Event, error) {
 }
 
 // build converts the accumulated VEVENT properties into a dashboard.Event.
-// It returns a nil event (no error) for all-day events, which the dashboard
-// doesn't need to schedule to the minute.
 func (b eventBuilder) build() (*dashboard.Event, error) {
 	if !b.hasDTStart {
 		return nil, errors.New("webcal: VEVENT missing DTSTART")
 	}
-	if b.dtstartParams["VALUE"] == "DATE" {
-		return nil, nil
-	}
 
-	start, err := parseICSTime(b.dtstartValue, b.dtstartParams)
-	if err != nil {
-		return nil, fmt.Errorf("webcal: parse DTSTART: %w", err)
+	var start time.Time
+	var allDay bool
+	var err error
+	if start, err = parseICSDate(b.dtstartValue); err == nil {
+		allDay = true
+	} else {
+		start, err = parseICSTime(b.dtstartValue, b.dtstartParams)
+		if err != nil {
+			return nil, fmt.Errorf("webcal: parse DTSTART: %w", err)
+		}
 	}
 
 	var end time.Time
-	if b.hasDTEnd && b.dtendParams["VALUE"] != "DATE" {
-		end, err = parseICSTime(b.dtendValue, b.dtendParams)
-		if err != nil {
-			return nil, fmt.Errorf("webcal: parse DTEND: %w", err)
+	if b.hasDTEnd {
+		if _, dateErr := parseICSDate(b.dtendValue); dateErr != nil {
+			end, err = parseICSTime(b.dtendValue, b.dtendParams)
+			if err != nil {
+				return nil, fmt.Errorf("webcal: parse DTEND: %w", err)
+			}
 		}
 	}
 
@@ -196,6 +202,7 @@ func (b eventBuilder) build() (*dashboard.Event, error) {
 		Summary:     b.summary,
 		Location:    b.location,
 		Description: b.description,
+		AllDay:      allDay,
 		Start:       start,
 		End:         end,
 	}, nil
@@ -228,6 +235,24 @@ func parseICSTime(value string, params map[string]string) (time.Time, error) {
 		return time.Time{}, err
 	}
 	return t.UTC(), nil
+}
+
+// parseICSDate attempts to parse value as a date-only DTSTART/DTEND (e.g.
+// "20260926"), the RFC 5545 form used for all-day events. Success is the
+// detection mechanism for all-day events, regardless of whether a
+// VALUE=DATE param was present. The date is interpreted as midnight
+// Europe/Stockholm and converted to UTC.
+func parseICSDate(value string) (time.Time, error) {
+	d, err := time.Parse("20060102", value)
+	if err != nil {
+		return time.Time{}, err
+	}
+	loc, err := time.LoadLocation("Europe/Stockholm")
+	if err != nil {
+		return time.Time{}, err
+	}
+	y, m, day := d.Date()
+	return time.Date(y, m, day, 0, 0, 0, 0, loc).UTC(), nil
 }
 
 // unfoldLines splits raw ICS bytes into logical (unfolded) lines per

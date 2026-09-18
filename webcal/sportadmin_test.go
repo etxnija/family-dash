@@ -22,19 +22,45 @@ func stockholm(t *testing.T) *time.Location {
 	return loc
 }
 
-func TestParseICS_NormalEvents(t *testing.T) {
-	data, err := os.ReadFile("testdata/sample.ics")
-	if err != nil {
-		t.Fatalf("ReadFile: %v", err)
-	}
-	loc := stockholm(t)
-
-	got, err := webcal.ParseICS(data)
+// parseICSOne parses feed and asserts it yields exactly one event.
+func parseICSOne(t *testing.T, feed string) dashboard.Event {
+	t.Helper()
+	got, err := webcal.ParseICS([]byte(feed))
 	if err != nil {
 		t.Fatalf("ParseICS() error = %v", err)
 	}
+	if len(got) != 1 {
+		t.Fatalf("ParseICS() returned %d events, want 1", len(got))
+	}
+	return got[0]
+}
 
-	want := []dashboard.Event{
+// assertEventFields compares got against want field by field, reporting
+// which field mismatched.
+func assertEventFields(t *testing.T, i int, got, want dashboard.Event) {
+	t.Helper()
+	if !got.Start.Equal(want.Start) {
+		t.Errorf("event %d Start = %v, want %v", i, got.Start, want.Start)
+	}
+	if !got.End.Equal(want.End) {
+		t.Errorf("event %d End = %v, want %v", i, got.End, want.End)
+	}
+	if got.Summary != want.Summary {
+		t.Errorf("event %d Summary = %q, want %q", i, got.Summary, want.Summary)
+	}
+	if got.Location != want.Location {
+		t.Errorf("event %d Location = %q, want %q", i, got.Location, want.Location)
+	}
+	if got.Description != want.Description {
+		t.Errorf("event %d Description = %q, want %q", i, got.Description, want.Description)
+	}
+	if got.AllDay != want.AllDay {
+		t.Errorf("event %d AllDay = %v, want %v", i, got.AllDay, want.AllDay)
+	}
+}
+
+func wantNormalEvents(loc *time.Location) []dashboard.Event {
+	return []dashboard.Event{
 		{
 			Summary:     "Träning - F2015 Vit",
 			Location:    "Kålltorps IP A-plan",
@@ -49,27 +75,75 @@ func TestParseICS_NormalEvents(t *testing.T) {
 			Start:       time.Date(2026, 9, 20, 14, 0, 0, 0, loc),
 			End:         time.Date(2026, 9, 20, 16, 0, 0, 0, loc),
 		},
+		{
+			Summary:     "Helgcup - F2015",
+			Location:    "Kålltorps IP",
+			Description: "Heldagscup, se separat schema.",
+			AllDay:      true,
+			Start:       time.Date(2026, 9, 26, 0, 0, 0, 0, loc),
+		},
+	}
+}
+
+func TestParseICS_NormalEvents(t *testing.T) {
+	data, err := os.ReadFile("testdata/sample.ics")
+	if err != nil {
+		t.Fatalf("ReadFile: %v", err)
+	}
+	loc := stockholm(t)
+
+	got, err := webcal.ParseICS(data)
+	if err != nil {
+		t.Fatalf("ParseICS() error = %v", err)
 	}
 
+	want := wantNormalEvents(loc)
 	if len(got) != len(want) {
 		t.Fatalf("ParseICS() returned %d events, want %d: %+v", len(got), len(want), got)
 	}
 	for i := range want {
-		if !got[i].Start.Equal(want[i].Start) {
-			t.Errorf("event %d Start = %v, want %v", i, got[i].Start, want[i].Start)
-		}
-		if !got[i].End.Equal(want[i].End) {
-			t.Errorf("event %d End = %v, want %v", i, got[i].End, want[i].End)
-		}
-		if got[i].Summary != want[i].Summary {
-			t.Errorf("event %d Summary = %q, want %q", i, got[i].Summary, want[i].Summary)
-		}
-		if got[i].Location != want[i].Location {
-			t.Errorf("event %d Location = %q, want %q", i, got[i].Location, want[i].Location)
-		}
-		if got[i].Description != want[i].Description {
-			t.Errorf("event %d Description = %q, want %q", i, got[i].Description, want[i].Description)
-		}
+		assertEventFields(t, i, got[i], want[i])
+	}
+}
+
+func TestParseICS_AllDay(t *testing.T) {
+	loc := stockholm(t)
+	want := time.Date(2026, 9, 26, 0, 0, 0, 0, loc)
+
+	tests := []struct {
+		name string
+		feed string
+	}{
+		{
+			name: "without VALUE param",
+			feed: "BEGIN:VCALENDAR\n" +
+				"BEGIN:VEVENT\n" +
+				"DTSTART:20260926\n" +
+				"SUMMARY:Helgcup\n" +
+				"END:VEVENT\n" +
+				"END:VCALENDAR\n",
+		},
+		{
+			name: "with VALUE param",
+			feed: "BEGIN:VCALENDAR\n" +
+				"BEGIN:VEVENT\n" +
+				"DTSTART;VALUE=DATE:20260926\n" +
+				"SUMMARY:Helgcup\n" +
+				"END:VEVENT\n" +
+				"END:VCALENDAR\n",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			event := parseICSOne(t, tt.feed)
+			if !event.AllDay {
+				t.Errorf("AllDay = false, want true")
+			}
+			if !event.Start.Equal(want) {
+				t.Errorf("Start = %v, want %v", event.Start, want)
+			}
+		})
 	}
 }
 
@@ -101,16 +175,10 @@ func TestParseICS_LineFolding(t *testing.T) {
 		"END:VEVENT\r\n" +
 		"END:VCALENDAR\r\n"
 
-	got, err := webcal.ParseICS([]byte(feed))
-	if err != nil {
-		t.Fatalf("ParseICS() error = %v", err)
-	}
-	if len(got) != 1 {
-		t.Fatalf("ParseICS() returned %d events, want 1", len(got))
-	}
+	event := parseICSOne(t, feed)
 	want := "Träning - F2015 Vit (samlingsplats Kålltorps IP A-plan)"
-	if got[0].Summary != want {
-		t.Errorf("Summary = %q, want %q", got[0].Summary, want)
+	if event.Summary != want {
+		t.Errorf("Summary = %q, want %q", event.Summary, want)
 	}
 }
 

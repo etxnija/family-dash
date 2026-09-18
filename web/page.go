@@ -60,13 +60,20 @@ func NewPageData(events []dashboard.Event, owners []string, now time.Time) (Page
 
 	rows := make([]EventRow, 0, len(events))
 	for _, e := range events {
-		start := e.Start.In(loc)
-		timeRange := start.Format("15:04")
-		if !e.End.IsZero() {
-			timeRange += "–" + e.End.In(loc).Format("15:04")
+		var timeStr, timeRange string
+		if e.AllDay {
+			timeStr = "All day"
+			timeRange = "All day"
+		} else {
+			start := e.Start.In(loc)
+			timeStr = start.Format("15:04")
+			timeRange = timeStr
+			if !e.End.IsZero() {
+				timeRange += "–" + e.End.In(loc).Format("15:04")
+			}
 		}
 		rows = append(rows, EventRow{
-			Time:      start.Format("15:04"),
+			Time:      timeStr,
 			TimeRange: timeRange,
 			Summary:   e.Summary,
 			Location:  e.Location,

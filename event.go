@@ -12,6 +12,7 @@ type Event struct {
 	Location    string
 	Description string
 	Owner       string
+	AllDay      bool
 	// Start is always UTC.
 	Start time.Time
 	// End is always UTC.

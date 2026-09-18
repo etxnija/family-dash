@@ -44,8 +44,15 @@ feed quirks the others don't share would get its own file (e.g.
   adapter must return UTC-normalized `Event.Start`/`End`, and callers convert
   to a display timezone only at the presentation layer (see
   `cmd/family-dashboard/main.go`).
-- All-day events (`DTSTART;VALUE=DATE:...`) are skipped silently (no error,
-  no event emitted) — the dashboard only needs to-the-minute events.
+- All-day events are detected by parse attempt, not by inspecting the
+  `VALUE=DATE` param: `parseICSDate` tries `time.Parse("20060102", value)`
+  first; success means the value is date-only (whether or not `VALUE=DATE`
+  was present), so `build()` sets `Event.AllDay = true` and skips
+  `parseICSTime` for that property. A date-only DTEND is treated the same
+  way but its result is discarded — `Event.End` stays zero, since multi-day
+  span semantics are out of scope. The parsed date is interpreted as
+  midnight Europe/Stockholm and converted to UTC, consistent with the
+  UTC-normalization contract below.
 - **The feed URL must never appear in an error message** (it embeds a private
   subscription token). `scrubURL` strips the URL out of net/http's
   `*url.Error` before wrapping it, since `url.Error.Error()` otherwise

@@ -9,15 +9,18 @@ import (
 	dashboard "family-dashboard"
 )
 
-func TestNewPageData(t *testing.T) {
-	tests := []struct {
-		name          string
-		events        []dashboard.Event
-		now           time.Time
-		wantTimeRange string
-		wantWeekday   string
-		wantDateLabel string
-	}{
+type pageDataTestCase struct {
+	name          string
+	events        []dashboard.Event
+	now           time.Time
+	wantTime      string
+	wantTimeRange string
+	wantWeekday   string
+	wantDateLabel string
+}
+
+func newPageDataTestCases() []pageDataTestCase {
+	return []pageDataTestCase{
 		{
 			name: "event with end time",
 			events: []dashboard.Event{
@@ -28,6 +31,7 @@ func TestNewPageData(t *testing.T) {
 				},
 			},
 			now:           time.Date(2026, 9, 18, 12, 0, 0, 0, time.UTC),
+			wantTime:      "17:00",
 			wantTimeRange: "17:00–18:30",
 			wantWeekday:   "Friday",
 			wantDateLabel: "18 September",
@@ -41,13 +45,31 @@ func TestNewPageData(t *testing.T) {
 				},
 			},
 			now:           time.Date(2026, 9, 18, 6, 0, 0, 0, time.UTC),
+			wantTime:      "10:00",
 			wantTimeRange: "10:00",
 			wantWeekday:   "Friday",
 			wantDateLabel: "18 September",
 		},
+		{
+			name: "all-day event",
+			events: []dashboard.Event{
+				{
+					Summary: "Helgcup",
+					AllDay:  true,
+					Start:   time.Date(2026, 9, 18, 0, 0, 0, 0, time.UTC),
+				},
+			},
+			now:           time.Date(2026, 9, 18, 6, 0, 0, 0, time.UTC),
+			wantTime:      "All day",
+			wantTimeRange: "All day",
+			wantWeekday:   "Friday",
+			wantDateLabel: "18 September",
+		},
 	}
+}
 
-	for _, tt := range tests {
+func TestNewPageData(t *testing.T) {
+	for _, tt := range newPageDataTestCases() {
 		t.Run(tt.name, func(t *testing.T) {
 			data, err := NewPageData(tt.events, []string{"Kaj", "Lillian"}, tt.now)
 			if err != nil {
@@ -55,6 +77,9 @@ func TestNewPageData(t *testing.T) {
 			}
 			if len(data.Events) != 1 {
 				t.Fatalf("len(data.Events) = %d, want 1", len(data.Events))
+			}
+			if got := data.Events[0].Time; got != tt.wantTime {
+				t.Errorf("Time = %q, want %q", got, tt.wantTime)
 			}
 			if got := data.Events[0].TimeRange; got != tt.wantTimeRange {
 				t.Errorf("TimeRange = %q, want %q", got, tt.wantTimeRange)
