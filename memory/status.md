@@ -43,3 +43,6 @@ Session-to-session progress log. Distinct from AGENTS.md (stable rules).
 ## 2026-09-18 — Task 2: Update concept documentation for webcal rename
 
 - Verified this task's scope (`sportadmin-adapter.md` → `webcal-adapter.md` rename, frontmatter/heading/body updates, `index.md` entry) was already completed as part of the prior "Task 1 (rename)" commit — no further changes needed.
+
+
+**Run metrics:** 11 driver call(s), $3.1687, session 8920bd7c-e54a-4eae-847b-a38ed500eacf
