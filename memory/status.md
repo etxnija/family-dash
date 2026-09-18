@@ -53,3 +53,7 @@ Session-to-session progress log. Distinct from AGENTS.md (stable rules).
 
 
 **Run metrics:** 3 driver call(s), $0.7386, session 719d432b-17ef-4833-96f0-aa47d48cd5ba
+
+## 2026-09-18 — Task: Normalize Event times to UTC, convert for display
+
+- `parseICSTime` (`webcal/sportadmin.go`) now returns UTC from both the `Z` branch and the Stockholm-local branch via `.UTC()`; documented `Event.Start`/`End` as always-UTC and `EventSource` as requiring UTC-normalized adapter output (`event.go`); `cmd/family-dashboard/main.go` now loads `Europe/Stockholm` and converts via `.In(loc)` at print time instead of formatting raw (implicitly local) times. Updated `webcal-adapter.md` to describe this as a cross-adapter UTC contract. `go build`, `go vet`, `go test ./...` all pass.

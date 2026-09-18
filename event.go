@@ -11,11 +11,14 @@ type Event struct {
 	Summary     string
 	Location    string
 	Description string
-	Start       time.Time
-	End         time.Time
+	// Start is always UTC.
+	Start time.Time
+	// End is always UTC.
+	End time.Time
 }
 
 // EventSource is a port for fetching events; adapters implement it.
+// Adapters must return UTC-normalized Start/End times.
 type EventSource interface {
 	Events(ctx context.Context) ([]Event, error)
 }

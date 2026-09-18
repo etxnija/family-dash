@@ -35,7 +35,13 @@ func main() {
 	today := dashboard.TodayEvents(events, time.Now())
 	slog.Info("filtered to today", "count", len(today))
 
+	loc, err := time.LoadLocation("Europe/Stockholm")
+	if err != nil {
+		slog.Error("loading timezone", "error", err)
+		os.Exit(1)
+	}
+
 	for _, e := range today {
-		fmt.Printf("%s-%s %s @ %s\n", e.Start.Format("15:04"), e.End.Format("15:04"), e.Summary, e.Location)
+		fmt.Printf("%s-%s %s @ %s\n", e.Start.In(loc).Format("15:04"), e.End.In(loc).Format("15:04"), e.Summary, e.Location)
 	}
 }

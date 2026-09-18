@@ -5,7 +5,7 @@ summary: webcal ICS calendar adapter (SportAdmin source) — parsing rules, time
 links: [AGENTS.md]
 updated: 2026-09-18
 generated: { by: worker, at: 2026-09-18T00:00:00Z }
-verified: [{ by: "human", at: 2026-09-17 }, { by: "human", at: 2026-09-18 }]
+verified: [{ by: "human", at: 2026-09-17 }, { by: "human", at: 2026-09-18 }, { by: "human", at: 2026-09-18 }]
 ---
 
 # webcal ICS Adapter
@@ -29,8 +29,12 @@ would add its own file (e.g. `webcal/otherfeed.go`) alongside this one.
   lines start with a single space or tab.
 - SportAdmin's feed uses **local Stockholm time**, not UTC: both
   `DTSTART;TZID=Europe/Stockholm:...` and the bare `20260917T180000` format
-  (no trailing `Z`) are parsed as Europe/Stockholm. Only a trailing `Z`
-  triggers UTC parsing.
+  (no trailing `Z`) are parsed as Europe/Stockholm. `parseICSTime` normalizes
+  both branches (the `Z` branch and the local-time branch) to UTC via `.UTC()`
+  before returning — this is a cross-adapter contract: every `EventSource`
+  adapter must return UTC-normalized `Event.Start`/`End`, and callers convert
+  to a display timezone only at the presentation layer (see
+  `cmd/family-dashboard/main.go`).
 - All-day events (`DTSTART;VALUE=DATE:...`) are skipped silently (no error,
   no event emitted) — the dashboard only needs to-the-minute events.
 - **The feed URL must never appear in an error message** (it embeds a private

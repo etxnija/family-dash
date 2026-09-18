@@ -193,7 +193,11 @@ func (b eventBuilder) build() (*dashboard.Event, error) {
 // otherwise.
 func parseICSTime(value string, params map[string]string) (time.Time, error) {
 	if strings.HasSuffix(value, "Z") {
-		return time.Parse("20060102T150405Z", value)
+		t, err := time.Parse("20060102T150405Z", value)
+		if err != nil {
+			return time.Time{}, err
+		}
+		return t.UTC(), nil
 	}
 
 	loc, err := time.LoadLocation("Europe/Stockholm")
@@ -205,7 +209,11 @@ func parseICSTime(value string, params map[string]string) (time.Time, error) {
 			loc = l
 		}
 	}
-	return time.ParseInLocation("20060102T150405", value, loc)
+	t, err := time.ParseInLocation("20060102T150405", value, loc)
+	if err != nil {
+		return time.Time{}, err
+	}
+	return t.UTC(), nil
 }
 
 // unfoldLines splits raw ICS bytes into logical (unfolded) lines per
