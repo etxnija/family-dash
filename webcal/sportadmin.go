@@ -25,7 +25,21 @@ type Client struct {
 // *http.Client so tests can inject a stub transport instead of hitting the
 // network.
 func New(url string, client *http.Client) *Client {
-	return &Client{url: url, httpClient: client}
+	return &Client{url: normalizeWebcalScheme(url), httpClient: client}
+}
+
+// normalizeWebcalScheme rewrites the webcal(s) pseudo-scheme (used by
+// calendar subscription links) into the http(s) scheme that net/http
+// actually knows how to dial. URLs with any other scheme pass through
+// unchanged.
+func normalizeWebcalScheme(rawURL string) string {
+	if strings.HasPrefix(rawURL, "webcals://") {
+		return "https://" + strings.TrimPrefix(rawURL, "webcals://")
+	}
+	if strings.HasPrefix(rawURL, "webcal://") {
+		return "http://" + strings.TrimPrefix(rawURL, "webcal://")
+	}
+	return rawURL
 }
 
 // Events implements dashboard.EventSource by fetching and parsing the ICS

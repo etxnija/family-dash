@@ -2,6 +2,7 @@ package webcal_test
 
 import (
 	"context"
+	"io"
 	"net/http"
 	"os"
 	"strings"
@@ -158,11 +159,15 @@ func TestParseICS_MalformedEvent(t *testing.T) {
 // stubRoundTripper returns a canned response or error without touching the
 // network.
 type stubRoundTripper struct {
-	resp *http.Response
-	err  error
+	resp        *http.Response
+	err         error
+	capturedURL *string
 }
 
-func (s stubRoundTripper) RoundTrip(*http.Request) (*http.Response, error) {
+func (s stubRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
+	if s.capturedURL != nil {
+		*s.capturedURL = req.URL.String()
+	}
 	return s.resp, s.err
 }
 
@@ -188,5 +193,48 @@ func TestEvents_HTTPError(t *testing.T) {
 	}
 	if strings.Contains(err.Error(), "very-secret-token") {
 		t.Errorf("Events() error %q contains the feed token", err.Error())
+	}
+}
+
+func TestNew_NormalizesWebcalScheme(t *testing.T) {
+	const emptyFeed = `BEGIN:VCALENDAR
+VERSION:2.0
+PRODID:-//SportAdmin//Kalender//SV
+CALSCALE:GREGORIAN
+END:VCALENDAR
+`
+
+	tests := []struct {
+		name string
+		url  string
+		want string
+	}{
+		{name: "webcals", url: "webcals://host/path", want: "https://host/path"},
+		{name: "webcal", url: "webcal://host/path", want: "http://host/path"},
+		{name: "https passthrough", url: "https://host/path", want: "https://host/path"},
+		{name: "http passthrough", url: "http://host/path", want: "http://host/path"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var gotURL string
+			client := &http.Client{
+				Transport: stubRoundTripper{
+					resp: &http.Response{
+						StatusCode: http.StatusOK,
+						Body:       io.NopCloser(strings.NewReader(emptyFeed)),
+					},
+					capturedURL: &gotURL,
+				},
+			}
+
+			c := webcal.New(tt.url, client)
+			if _, err := c.Events(context.Background()); err != nil {
+				t.Fatalf("Events() error = %v", err)
+			}
+			if gotURL != tt.want {
+				t.Errorf("request URL = %q, want %q", gotURL, tt.want)
+			}
+		})
 	}
 }

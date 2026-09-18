@@ -5,7 +5,7 @@ summary: webcal ICS calendar adapter (SportAdmin and InfoMentor sources) — par
 links: [AGENTS.md]
 updated: 2026-09-18
 generated: { by: worker, at: 2026-09-18T00:00:00Z }
-verified: [{ by: "human", at: 2026-09-17 }, { by: "human", at: 2026-09-18 }, { by: "human", at: 2026-09-18 }, { by: "human", at: 2026-09-18 }]
+verified: [{ by: "human", at: 2026-09-17 }, { by: "human", at: 2026-09-18 }, { by: "human", at: 2026-09-18 }, { by: "human", at: 2026-09-18 }, { by: "human", at: 2026-09-18 }]
 ---
 
 # webcal ICS Adapter
@@ -27,6 +27,11 @@ feed quirks the others don't share would get its own file (e.g.
 ## Key Rules & Mechanics
 - `New(url, *http.Client)` takes the client as a parameter so tests inject a
   stub `http.RoundTripper` instead of hitting the network.
+- `New` normalizes the `webcal://`/`webcals://` pseudo-schemes (used by
+  calendar subscription links, e.g. what SportAdmin/InfoMentor hand out) to
+  `http://`/`https://` via `normalizeWebcalScheme` before storing the URL —
+  `net/http` doesn't know the `webcal(s)` scheme and would otherwise fail to
+  build the request. Any other scheme passes through unchanged.
 - `ParseICS` is a standalone function, not a method, so tests can feed it
   fixture bytes directly without constructing a `Client`.
 - ICS line folding (RFC 5545 §3.1) is unfolded before parsing: continuation
