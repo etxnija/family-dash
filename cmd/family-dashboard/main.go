@@ -5,6 +5,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"os"
 	"time"
@@ -14,9 +15,11 @@ import (
 )
 
 func main() {
+	slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stderr, nil)))
+
 	icsURL := os.Getenv("SPORTADMIN_ICS_URL")
 	if icsURL == "" {
-		fmt.Fprintln(os.Stderr, "SPORTADMIN_ICS_URL is not set")
+		slog.Error("SPORTADMIN_ICS_URL is not set")
 		os.Exit(1)
 	}
 
@@ -24,11 +27,15 @@ func main() {
 
 	events, err := source.Events(context.Background())
 	if err != nil {
-		fmt.Fprintln(os.Stderr, "fetching events:", err)
+		slog.Error("fetching events", "error", err)
 		os.Exit(1)
 	}
+	slog.Info("fetched events", "count", len(events))
 
-	for _, e := range dashboard.TodayEvents(events, time.Now()) {
+	today := dashboard.TodayEvents(events, time.Now())
+	slog.Info("filtered to today", "count", len(today))
+
+	for _, e := range today {
 		fmt.Printf("%s-%s %s @ %s\n", e.Start.Format("15:04"), e.End.Format("15:04"), e.Summary, e.Location)
 	}
 }

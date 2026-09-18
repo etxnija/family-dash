@@ -46,3 +46,7 @@ Session-to-session progress log. Distinct from AGENTS.md (stable rules).
 
 
 **Run metrics:** 11 driver call(s), $3.1687, session 8920bd7c-e54a-4eae-847b-a38ed500eacf
+
+## 2026-09-18 — Task: slog structured logging in composition root
+
+- Replaced `fmt.Fprintln`-based stderr errors in `cmd/family-dashboard/main.go` with `slog` JSON logging (default logger installed at top of `main()`), and added `slog.Info` diagnostics for fetched-event and filtered-to-today counts; `fmt.Printf` remains for the event-printing loop. `go build`, `go vet`, `go test ./...`, and sensors (`test.sh`, `lint.sh`) all pass.
