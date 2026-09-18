@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="sv">
+<head>
+	<meta charset="UTF-8">
+	<meta http-equiv="refresh" content="300">
+	<title>Family Dashboard</title>
+	<link rel="preconnect" href="https://fonts.googleapis.com">
+	<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+	<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+	<style>
+		:root {
+			--kaj: #2f80ed;
+			--lillian: #eb5757;
+			--family: #6b6b6b;
+			--bg: #0f1115;
+			--card: #1b1e26;
+			--text: #f5f5f5;
+			--muted: #9a9ea6;
+		}
+		* { box-sizing: border-box; }
+		body {
+			margin: 0;
+			font-family: 'Inter', sans-serif;
+			background: var(--bg);
+			color: var(--text);
+			padding: 2rem;
+		}
+		header {
+			display: flex;
+			justify-content: space-between;
+			align-items: baseline;
+			margin-bottom: 1.5rem;
+		}
+		header h1 {
+			margin: 0;
+			font-size: 2rem;
+		}
+		header .date {
+			color: var(--muted);
+			font-size: 1.25rem;
+		}
+		.owners {
+			display: flex;
+			gap: 0.5rem;
+			margin-bottom: 1rem;
+		}
+		.owner-chip {
+			padding: 0.25rem 0.75rem;
+			border-radius: 999px;
+			font-size: 0.85rem;
+			font-weight: 600;
+		}
+		.events {
+			list-style: none;
+			margin: 0;
+			padding: 0;
+			display: flex;
+			flex-direction: column;
+			gap: 0.75rem;
+		}
+		.event {
+			display: grid;
+			grid-template-columns: 6rem 1fr auto;
+			align-items: center;
+			gap: 1rem;
+			background: var(--card);
+			border-radius: 0.75rem;
+			padding: 1rem;
+		}
+		.event .time {
+			font-weight: 700;
+		}
+		.event .summary {
+			font-weight: 600;
+		}
+		.event .location {
+			color: var(--muted);
+			font-size: 0.9rem;
+		}
+		.event .owner {
+			padding: 0.25rem 0.75rem;
+			border-radius: 999px;
+			font-size: 0.85rem;
+			font-weight: 600;
+		}
+		.empty {
+			color: var(--muted);
+			font-style: italic;
+		}
+		section.placeholder {
+			margin-top: 2rem;
+			color: var(--muted);
+		}
+	</style>
+</head>
+<body>
+	<header>
+		<h1>{{.Weekday}}</h1>
+		<div class="date">{{.DateLabel}}</div>
+	</header>
+
+	<div class="owners">
+		{{range .Owners}}
+		<span class="owner-chip" style="background: var({{ownerColor .}}); color: var(--bg);">{{.}}</span>
+		{{end}}
+	</div>
+
+	{{if .Events}}
+	<ul class="events">
+		{{range .Events}}
+		<li class="event">
+			<span class="time">{{.TimeRange}}</span>
+			<span>
+				<div class="summary">{{.Summary}}</div>
+				{{if .Location}}<div class="location">{{.Location}}</div>{{end}}
+			</span>
+			<span class="owner" style="background: var({{ownerColor .Owner}}); color: var(--bg);">{{.Owner}}</span>
+		</li>
+		{{end}}
+	</ul>
+	{{else}}
+	<p class="empty">Nothing scheduled today.</p>
+	{{end}}
+
+	<section class="placeholder">
+		<h2>Weather</h2>
+		<p>Coming soon.</p>
+	</section>
+
+	<section class="placeholder">
+		<h2>School hours</h2>
+		<p>Coming soon.</p>
+	</section>
+
+	<section class="placeholder">
+		<h2>Homework</h2>
+		<p>Coming soon.</p>
+	</section>
+</body>
+</html>
