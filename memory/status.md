@@ -75,3 +75,7 @@ Session-to-session progress log. Distinct from AGENTS.md (stable rules).
 
 
 **Run metrics:** 7 driver call(s), $1.8704, session ded6d7c2-cf7d-4a68-a6a5-df3423c168d9
+
+## 2026-09-18 — Task: Extract config package and relocate buildSource
+
+- Moved config parsing out of `cmd/family-dashboard/config.go` into `config/config.go` (`package config`, exported `Source`/`Load`, no dependency on `family-dashboard`/`family-dashboard/webcal`); `TestLoadSources` moved to `config/config_test.go`. `buildSource` and its test moved into `cmd/family-dashboard/main.go`/`main_test.go` (updated to take `config.Source`), since wiring a config entry to a concrete adapter is composition-root work, not config parsing. Deleted the old `cmd/family-dashboard/config.go`/`config_test.go`. Updated `composition-root.md` to reflect the new package boundary. `go build`, `go vet`, `go test ./...`, and `sensors/lint.sh` all pass.

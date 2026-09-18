@@ -7,10 +7,13 @@ import (
 	"flag"
 	"fmt"
 	"log/slog"
+	"net/http"
 	"os"
 	"time"
 
 	dashboard "family-dashboard"
+	"family-dashboard/config"
+	"family-dashboard/webcal"
 )
 
 func main() {
@@ -23,7 +26,7 @@ func main() {
 		os.Exit(2)
 	}
 
-	sources, err := loadSources(*configPath)
+	sources, err := config.Load(*configPath)
 	if err != nil {
 		slog.Error("loading sources", "error", err)
 		os.Exit(1)
@@ -59,5 +62,15 @@ func main() {
 
 	for _, e := range today {
 		fmt.Printf("%s: %s-%s %s @ %s\n", e.Owner, e.Start.In(loc).Format("15:04"), e.End.In(loc).Format("15:04"), e.Summary, e.Location)
+	}
+}
+
+// buildSource constructs the dashboard.EventSource adapter for cfg.
+func buildSource(cfg config.Source) (dashboard.EventSource, error) {
+	switch cfg.Type {
+	case "sportadmin":
+		return webcal.New(cfg.URL, http.DefaultClient), nil
+	default:
+		return nil, fmt.Errorf("config: unknown source type %q for %q", cfg.Type, cfg.Name)
 	}
 }
