@@ -93,3 +93,6 @@ Session-to-session progress log. Distinct from AGENTS.md (stable rules).
 ## 2026-09-18 — Task: Add webcal scheme normalization
 
 - Added `normalizeWebcalScheme` (`webcal/sportadmin.go`), called from `New` to rewrite `webcal://`/`webcals://` URLs to `http://`/`https://` before storing them, since `net/http` doesn't understand the `webcal(s)` pseudo-scheme used by calendar subscription links. Added `TestNew_NormalizesWebcalScheme` table-driven test to `webcal/sportadmin_test.go`, extending `stubRoundTripper` with a `capturedURL` field to assert the actual request URL. Updated `webcal-adapter.md`. `go build`, `go vet`, `go test ./...`, and `sensors/lint.sh` all pass.
+
+
+**Run metrics:** 6 driver call(s), $2.0994, session c3b90d66-7ea4-4f04-b5d1-51a5d9b6be7e
