@@ -121,3 +121,10 @@ Session-to-session progress log. Distinct from AGENTS.md (stable rules).
 
 
 **Run metrics:** 5 driver call(s), $3.1236, session 5ad27b0f-bfef-4caa-9b8b-a76529910aeb
+
+## 2026-09-19 — Task: Receipt-style dashboard redesign
+
+- Added `WeekNumber`/`CurrentTime` to `PageData` (set in `NewPageData` from `localNow.ISOWeek()`/`.Format("15:04")`); added five unexported Swedish translation FuncMap helpers to `web/page.go` (`svWeekday`, `svDateLabel`, `svDayLabel`, `svTime`, `ownerInitial`), each translating at render time only so `NewPageData`'s Go-side data stays English; removed the now-unused `dict` helper. Rewrote `web/templates/page.html.tmpl` as a monochrome, Courier-New "receipt" layout (centered white sheet with corner marks, big header + week number, centered owner line, large clock + weather placeholder, Skolschema/Skollunch/Idag/Läxor/Kommande-dagar sections separated by `<hr>`s), removing the Google Fonts link, oklch color vars, and the `comingUpCard` sub-template; `<html lang="sv">`. Added `TestNewPageData_WeekNumberAndCurrentTime` and table-driven tests for all five new FuncMap helpers to `web/page_test.go`; updated `TestRender`'s empty-state expectation to `"Inget planerat idag."`; left `TestNewPageData`/`TestNewPageData_Homework` (English assertions) unchanged. Verified visually via a headless-Chrome screenshot of the rendered template. Added `memory/concepts/dashboard-page.md`. `go build`, `go vet`, `gofmt -l .`, `go test ./... -race`, `sensors/lint.sh` all pass.
+
+
+**Run metrics:** 7 driver call(s), $3.5247, session 63d7433c-a906-4f59-9ce8-6c0befe942b2
