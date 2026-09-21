@@ -8,6 +8,7 @@ import (
 	"io"
 	"math"
 	"sort"
+	"strings"
 	"time"
 
 	dashboard "family-dashboard"
@@ -17,8 +18,12 @@ import (
 var templateFS embed.FS
 
 var pageTemplate = template.Must(template.New("").Funcs(template.FuncMap{
-	"ownerColor": ownerColor,
-	"dict":       dict,
+	"ownerColor":   ownerColor,
+	"svWeekday":    svWeekday,
+	"svDateLabel":  svDateLabel,
+	"svDayLabel":   svDayLabel,
+	"svTime":       svTime,
+	"ownerInitial": ownerInitial,
 }).ParseFS(templateFS, "templates/page.html.tmpl"))
 
 // EventRow is the flattened, display-ready view of a dashboard.Event.
@@ -46,11 +51,13 @@ type HomeworkGroup struct {
 
 // PageData holds everything the page template needs to render.
 type PageData struct {
-	Weekday   string
-	DateLabel string
-	Events    []EventRow
-	Owners    []string
-	Homework  []HomeworkGroup
+	Weekday     string
+	DateLabel   string
+	WeekNumber  int
+	CurrentTime string
+	Events      []EventRow
+	Owners      []string
+	Homework    []HomeworkGroup
 }
 
 // ownerColors maps a known owner name to its CSS custom-property name.
@@ -68,18 +75,6 @@ func ownerColor(name string) string {
 	return "--family"
 }
 
-// dict builds a map from alternating key/value arguments, for passing
-// multiple named values into a template's {{template}} action.
-func dict(values ...any) map[string]any {
-	m := make(map[string]any, len(values)/2)
-	for i := 0; i < len(values)-1; i += 2 {
-		if key, ok := values[i].(string); ok {
-			m[key] = values[i+1]
-		}
-	}
-	return m
-}
-
 // NewPageData builds a PageData for events, homeworkEvents, owners, and now,
 // converting all times to Europe/Stockholm for display.
 func NewPageData(events []dashboard.Event, homeworkEvents []dashboard.Event, owners []string, now time.Time) (PageData, error) {
@@ -89,13 +84,16 @@ func NewPageData(events []dashboard.Event, homeworkEvents []dashboard.Event, own
 	}
 
 	localNow := now.In(loc)
+	_, week := localNow.ISOWeek()
 
 	return PageData{
-		Weekday:   localNow.Format("Monday"),
-		DateLabel: localNow.Format("2 January"),
-		Events:    buildEventRows(events, loc),
-		Owners:    owners,
-		Homework:  buildHomeworkGroups(homeworkEvents, owners, localNow, loc),
+		Weekday:     localNow.Format("Monday"),
+		DateLabel:   localNow.Format("2 January"),
+		WeekNumber:  week,
+		CurrentTime: localNow.Format("15:04"),
+		Events:      buildEventRows(events, loc),
+		Owners:      owners,
+		Homework:    buildHomeworkGroups(homeworkEvents, owners, localNow, loc),
 	}, nil
 }
 
@@ -178,6 +176,92 @@ func homeworkDayLabel(offset int, eventDate time.Time) string {
 	default:
 		return eventDate.Weekday().String()
 	}
+}
+
+// svWeekdays maps English weekday names (as produced by time.Format
+// "Monday") to their Swedish equivalents.
+var svWeekdays = map[string]string{
+	"Monday":    "Måndag",
+	"Tuesday":   "Tisdag",
+	"Wednesday": "Onsdag",
+	"Thursday":  "Torsdag",
+	"Friday":    "Fredag",
+	"Saturday":  "Lördag",
+	"Sunday":    "Söndag",
+}
+
+// svMonths maps English month names (as produced by time.Format "January")
+// to their lowercase Swedish equivalents.
+var svMonths = map[string]string{
+	"January":   "januari",
+	"February":  "februari",
+	"March":     "mars",
+	"April":     "april",
+	"May":       "maj",
+	"June":      "juni",
+	"July":      "juli",
+	"August":    "augusti",
+	"September": "september",
+	"October":   "oktober",
+	"November":  "november",
+	"December":  "december",
+}
+
+// svWeekday translates an English weekday name to Swedish, passing through
+// any string it doesn't recognize.
+func svWeekday(s string) string {
+	if sv, ok := svWeekdays[s]; ok {
+		return sv
+	}
+	return s
+}
+
+// svDateLabel translates the month name within a DateLabel string (e.g.
+// "18 September") to lowercase Swedish.
+func svDateLabel(s string) string {
+	parts := strings.SplitN(s, " ", 2)
+	if len(parts) != 2 {
+		return s
+	}
+	month, ok := svMonths[parts[1]]
+	if !ok {
+		return s
+	}
+	return parts[0] + " " + month
+}
+
+// svDayLabel translates a homework day label to Swedish: "Due today" and
+// "Due tomorrow" to fixed phrases, and any weekday name (the fallback from
+// homeworkDayLabel) to its lowercase Swedish equivalent.
+func svDayLabel(s string) string {
+	switch s {
+	case "Due today":
+		return "idag"
+	case "Due tomorrow":
+		return "imorgon"
+	}
+	if sv, ok := svWeekdays[s]; ok {
+		return strings.ToLower(sv)
+	}
+	return s
+}
+
+// svTime translates the "All day" event time label to Swedish, passing
+// through any other value (e.g. "15:30") unchanged.
+func svTime(s string) string {
+	if s == "All day" {
+		return "heldag"
+	}
+	return s
+}
+
+// ownerInitial returns the first rune of s, uppercased, as a string. It
+// returns "" for an empty input.
+func ownerInitial(s string) string {
+	for _, r := range s {
+		return strings.ToUpper(string(r))
+	}
+	return ""
 }
 
 // Render executes the page template for data into w.

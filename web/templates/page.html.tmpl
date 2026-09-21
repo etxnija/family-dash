@@ -1,187 +1,176 @@
 <!doctype html>
-<html lang="en">
+<html lang="sv">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta http-equiv="refresh" content="300">
 <title>Family Dashboard</title>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700&family=Manrope:wght@400;600;700;800&display=swap">
 <style>
-  :root {
-    --bg: oklch(0.97 0.012 80);
-    --card: oklch(0.995 0.004 80);
-    --row: oklch(0.985 0.006 80);
-    --border: oklch(0.89 0.012 80);
-    --text: oklch(0.23 0.02 65);
-    --muted: oklch(0.53 0.02 65);
-    --kaj: oklch(0.6 0.12 175);
-    --lillian: oklch(0.68 0.15 55);
-    --family: oklch(0.5 0.02 250);
-    --sun: oklch(0.72 0.14 75);
-    --weather: oklch(0.5 0.05 235);
-  }
   * { box-sizing: border-box; }
   html, body { margin: 0; padding: 0; }
   body {
-    font-family: 'Manrope', ui-sans-serif, system-ui, sans-serif;
-    background: var(--bg);
-    color: var(--text);
+    font-family: "Courier New", Courier, monospace;
+    background: #d5d5d5;
+    color: #000;
     min-height: 100vh;
-    padding: 32px 40px;
+    padding: 40px 0;
     display: flex;
-    flex-direction: column;
-    gap: 20px;
+    justify-content: center;
   }
-  a { color: var(--kaj); }
+  .sheet {
+    position: relative;
+    background: #fdfdfb;
+    max-width: 700px;
+    width: 100%;
+    padding: 50px;
+    margin: 0 20px;
+  }
+  .corner {
+    position: absolute;
+    width: 8px;
+    height: 8px;
+    background: #000;
+  }
+  .corner.tl { top: 14px; left: 14px; }
+  .corner.tr { top: 14px; right: 14px; }
+  .corner.bl { bottom: 14px; left: 14px; }
+  .corner.br { bottom: 14px; right: 14px; }
+  .header {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+  }
+  .header .today {
+    font-size: 28px;
+    font-weight: bold;
+  }
+  .header .week {
+    font-size: 14px;
+  }
+  .owners {
+    text-align: center;
+    text-transform: uppercase;
+    letter-spacing: 0.15em;
+    margin-top: 10px;
+  }
+  hr {
+    border: none;
+    border-top: 1px solid #000;
+    margin: 20px 0;
+  }
+  .clock-weather {
+    display: flex;
+    align-items: center;
+  }
+  .clock {
+    flex: 1;
+    font-size: 80px;
+    font-weight: bold;
+    line-height: 1;
+  }
+  .weather {
+    flex: 1;
+    border-left: 1px solid #000;
+    padding-left: 20px;
+    text-align: center;
+  }
+  .weather .temp {
+    font-size: 32px;
+    font-weight: bold;
+  }
+  .weather .source {
+    font-size: 12px;
+  }
+  h2 {
+    font-size: 15px;
+    font-weight: bold;
+    text-transform: uppercase;
+    margin: 0 0 10px;
+  }
+  .row {
+    margin: 4px 0;
+  }
+  .muted {
+    color: #666;
+    font-size: 12px;
+  }
+  .placeholder-note {
+    font-size: 12px;
+    color: #666;
+    margin-bottom: 8px;
+  }
 </style>
 </head>
 <body>
 
-  <div style="display:flex; align-items:center; justify-content:space-between; gap:20px; flex-shrink:0;">
-    <div>
-      <div style="font-size:14px; font-weight:800; letter-spacing:0.16em; text-transform:uppercase; color:var(--muted);">Today</div>
-      <div style="font-family:'Space Grotesk', ui-sans-serif, system-ui, sans-serif; font-size:42px; font-weight:700; line-height:1.05; margin-top:2px;">
-        {{.Weekday}} <span style="font-weight:500; color:var(--muted); font-size:25px;">{{.DateLabel}}</span>
-      </div>
-    </div>
+<div class="sheet">
+  <span class="corner tl"></span>
+  <span class="corner tr"></span>
+  <span class="corner bl"></span>
+  <span class="corner br"></span>
 
-    <div style="display:flex; align-items:center; gap:18px; margin-left:auto;">
+  <div class="header">
+    <div class="today">{{svWeekday .Weekday}} {{svDateLabel .DateLabel}}</div>
+    <div class="week">v.{{.WeekNumber}}</div>
+  </div>
 
-      <div style="display:flex; align-items:center; gap:12px; background:var(--card); border:1px solid var(--border); border-radius:18px; padding:10px 18px; color:var(--weather);">
-        <svg viewBox="0 0 28 24" width="30" height="26" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;">
-          <circle cx="9" cy="8" r="4"></circle>
-          <path d="M9 1.5v2M9 12.5v0M1.5 8h2M2.9 3.4l1.4 1.4M2.9 12.6l1.4-1.4"></path>
-          <path d="M13 19.5a4.2 4.2 0 0 1 .3-8.4A5.4 5.4 0 0 1 23.8 13a3.7 3.7 0 0 1-1 6.5H13Z"></path>
-        </svg>
-        <div>
-          <div style="font-family:'Space Grotesk', ui-sans-serif, system-ui, sans-serif; font-size:26px; font-weight:700; line-height:1; color:var(--text);">&mdash;&deg;</div>
-          <div style="font-size:11px; color:var(--muted); margin-top:2px;">No weather source yet</div>
-        </div>
-      </div>
+  <div class="owners">{{range $i, $o := .Owners}}{{if $i}} &middot; {{end}}{{$o}}{{end}}</div>
 
-      <div style="display:flex; gap:8px;">
-        {{range .Owners}}
-        <div style="display:flex; align-items:center; gap:7px; background:var(--card); border:1px solid var(--border); border-radius:999px; padding:8px 13px 8px 10px;">
-          <span style="width:11px; height:11px; border-radius:50%; background:var({{ownerColor .}}); flex-shrink:0;"></span>
-          <span style="font-size:14px; font-weight:700;">{{.}}</span>
-        </div>
-        {{end}}
-      </div>
+  <hr>
+
+  <div class="clock-weather">
+    <div class="clock">{{.CurrentTime}}</div>
+    <div class="weather">
+      <div class="temp">&mdash;&deg;</div>
+      <div class="source">ingen v&auml;derk&auml;lla</div>
     </div>
   </div>
 
-  <div style="display:flex; gap:20px; flex:1; min-height:0;">
+  <hr>
 
-    <div style="flex:1.4; background:var(--card); border:1px solid var(--border); border-radius:22px; padding:24px 26px; display:flex; flex-direction:column; gap:14px; min-width:0;">
-      <div style="font-family:'Space Grotesk', ui-sans-serif, system-ui, sans-serif; font-size:21px; font-weight:700;">Today's schedule</div>
+  <h2>Skolschema</h2>
+  <div class="placeholder-note">(platsh&aring;llare)</div>
+  <div class="row"><b>K</b>&nbsp;&nbsp;08:20&ndash;15:10</div>
+  <div class="row"><b>L</b>&nbsp;&nbsp;08:10&ndash;13:40</div>
 
-      <div style="display:flex; flex-direction:column; gap:10px;">
-        {{if not .Events}}
-        <div style="padding:11px 14px; color:var(--muted); font-size:15px;">Nothing scheduled today.</div>
-        {{end}}
-        {{range .Events}}
-        <div style="display:flex; align-items:center; gap:14px; padding:11px 14px; border-radius:16px; background:var(--row);">
-          <div style="width:5px; align-self:stretch; border-radius:3px; background:var({{ownerColor .Owner}}); flex-shrink:0;"></div>
-          <div style="font-family:'Space Grotesk', ui-sans-serif, system-ui, sans-serif; font-size:18px; font-weight:700; width:58px; flex-shrink:0;">{{.Time}}</div>
-          <div style="width:38px; height:38px; border-radius:12px; background:color-mix(in oklch, var({{ownerColor .Owner}}) 16%, white); display:flex; align-items:center; justify-content:center; flex-shrink:0; color:var({{ownerColor .Owner}});">
-            <svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8.5"></circle><path d="M12 3.5v17M3.9 8h16.2M3.9 16h16.2"></path></svg>
-          </div>
-          <div style="flex:1; min-width:0;">
-            <div style="font-size:17px; font-weight:700;">{{.Summary}}</div>
-            <div style="font-size:13px; color:var(--muted); margin-top:2px;">{{.Location}} &middot; {{.TimeRange}}</div>
-          </div>
-          <div style="font-size:12px; font-weight:700; color:var({{ownerColor .Owner}}); background:color-mix(in oklch, var({{ownerColor .Owner}}) 14%, white); padding:6px 13px; border-radius:999px; flex-shrink:0;">{{.Owner}}</div>
-        </div>
-        {{end}}
-      </div>
-    </div>
+  <hr>
 
-    <div style="flex:1; background:var(--card); border:1px solid var(--border); border-radius:22px; padding:24px 24px; display:flex; flex-direction:column; gap:18px; min-width:0;">
-      <div style="font-family:'Space Grotesk', ui-sans-serif, system-ui, sans-serif; font-size:21px; font-weight:700;">School today</div>
-      <div style="font-size:13px; color:var(--muted);">Placeholder &mdash; no school-hours data source yet</div>
+  <h2>Skollunch</h2>
+  <div class="placeholder-note">(platsh&aring;llare)</div>
+  <div class="row"><b>K</b>&nbsp;&nbsp;Fiskgrat&auml;ng med potatis</div>
+  <div class="row"><b>L</b>&nbsp;&nbsp;Vegetariska tacos</div>
 
-      <div style="display:flex; flex-direction:column; gap:10px;">
-        <div style="display:flex; align-items:center; gap:8px;">
-          <span style="width:10px; height:10px; border-radius:50%; background:var(--kaj); flex-shrink:0;"></span>
-          <span style="font-size:15px; font-weight:700;">Kaj</span>
-        </div>
-        <div style="display:flex; flex-direction:column; gap:8px; padding:12px 14px; border-radius:14px; background:var(--row);">
-          <div style="display:flex; align-items:center; gap:9px;">
-            <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="var(--muted)" stroke-width="1.8" style="flex-shrink:0;"><circle cx="12" cy="12" r="9"></circle><path d="M12 7v5l3.3 1.9"></path></svg>
-            <span style="font-family:'Space Grotesk', ui-sans-serif, system-ui, sans-serif; font-size:16px; font-weight:700;">08:20&ndash;15:10</span>
-          </div>
-          <div style="display:flex; align-items:center; gap:9px;">
-            <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="var(--muted)" stroke-width="1.8" style="flex-shrink:0;"><circle cx="12" cy="12" r="9"></circle><circle cx="12" cy="12" r="4"></circle></svg>
-            <span style="font-size:14px; color:var(--muted);">Fish gratin &amp; peas</span>
-          </div>
-        </div>
-      </div>
+  <hr>
 
-      <div style="display:flex; flex-direction:column; gap:10px;">
-        <div style="display:flex; align-items:center; gap:8px;">
-          <span style="width:10px; height:10px; border-radius:50%; background:var(--lillian); flex-shrink:0;"></span>
-          <span style="font-size:15px; font-weight:700;">Lillian</span>
-        </div>
-        <div style="display:flex; flex-direction:column; gap:8px; padding:12px 14px; border-radius:14px; background:var(--row);">
-          <div style="display:flex; align-items:center; gap:9px;">
-            <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="var(--muted)" stroke-width="1.8" style="flex-shrink:0;"><circle cx="12" cy="12" r="9"></circle><path d="M12 7v5l3.3 1.9"></path></svg>
-            <span style="font-family:'Space Grotesk', ui-sans-serif, system-ui, sans-serif; font-size:16px; font-weight:700;">08:10&ndash;13:40</span>
-          </div>
-          <div style="display:flex; align-items:center; gap:9px;">
-            <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="var(--muted)" stroke-width="1.8" style="flex-shrink:0;"><circle cx="12" cy="12" r="9"></circle><circle cx="12" cy="12" r="4"></circle></svg>
-            <span style="font-size:14px; color:var(--muted);">Veggie tacos</span>
-          </div>
-        </div>
-      </div>
-    </div>
+  <h2>Idag</h2>
+  {{if not .Events}}
+  <div class="row muted">Inget planerat idag.</div>
+  {{end}}
+  {{range .Events}}
+  <div class="row"><b>{{svTime .Time}}</b>&nbsp;&nbsp;{{.Owner}} &ndash; {{.Summary}}{{if .Location}}, {{.Location}}{{end}}</div>
+  {{end}}
 
-    <div style="flex:1.1; background:var(--card); border:1px solid var(--border); border-radius:22px; padding:24px 24px; display:flex; flex-direction:column; gap:18px; min-width:0;">
-      <div>
-        <div style="font-family:'Space Grotesk', ui-sans-serif, system-ui, sans-serif; font-size:21px; font-weight:700;">Homework due</div>
-      </div>
+  <hr>
 
-      {{if not .Homework}}
-      <div style="padding:11px 13px; color:var(--muted); font-size:15px;">No homework this week.</div>
-      {{end}}
-      {{range .Homework}}
-      <div style="display:flex; flex-direction:column; gap:10px;">
-        <div style="display:flex; align-items:center; gap:8px;">
-          <span style="width:10px; height:10px; border-radius:50%; background:var({{ownerColor .Owner}}); flex-shrink:0;"></span>
-          <span style="font-size:15px; font-weight:700;">{{.Owner}}</span>
-        </div>
-        {{range .Items}}
-        <div style="display:flex; align-items:flex-start; gap:11px; padding:11px 13px; border-radius:14px; background:var(--row);">
-          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="var(--muted)" stroke-width="1.8" style="margin-top:2px; flex-shrink:0;"><circle cx="12" cy="12" r="9"></circle></svg>
-          <div style="flex:1;">
-            <div style="font-size:15px; font-weight:700;">{{.Summary}}</div>
-            <div style="font-size:13px; margin-top:2px; {{if .IsToday}}color:var(--text); font-weight:600;{{else}}color:var(--muted);{{end}}">{{.DayLabel}}</div>
-          </div>
-        </div>
-        {{end}}
-      </div>
-      {{end}}
-    </div>
+  <h2>L&auml;xor</h2>
+  {{if not .Homework}}
+  <div class="row muted">Inga l&auml;xor den h&auml;r veckan.</div>
+  {{end}}
+  {{range $group := .Homework}}
+  {{range $group.Items}}
+  <div class="row"><b>{{ownerInitial $group.Owner}}</b>&nbsp;&nbsp;{{.Summary}} &ndash; {{svDayLabel .DayLabel}}</div>
+  {{end}}
+  {{end}}
 
-  </div>
+  <hr>
 
-  <div style="display:flex; flex-direction:column; gap:10px; flex-shrink:0;">
-    <div style="font-size:13px; font-weight:800; letter-spacing:0.14em; text-transform:uppercase; color:var(--muted);">Coming up &mdash; placeholder</div>
-    <div style="display:flex; gap:16px;">
-      {{template "comingUpCard" dict "Color" "lillian" "Day" "Wednesday" "Text" "Lillian – Soccer game, away · 10:00"}}
-      {{template "comingUpCard" dict "Color" "kaj" "Day" "Thursday" "Text" "Kaj – Floorball tournament, all day"}}
-      {{template "comingUpCard" dict "Color" "family" "Day" "Friday" "Text" "Family – Movie night"}}
-    </div>
-  </div>
+  <h2>Kommande dagar</h2>
+  <div class="placeholder-note">(platsh&aring;llare)</div>
+  <div class="row">Ons&nbsp;&nbsp;&nbsp;Lillian &ndash; Bortamatch, 10:00</div>
+  <div class="row">Tors&nbsp;&nbsp;Kaj &ndash; Innebandyturnering, heldag</div>
+  <div class="row">Fre&nbsp;&nbsp;&nbsp;Familj &ndash; Filmkv&auml;ll</div>
+
+</div>
 
 </body>
 </html>
-
-{{define "comingUpCard"}}
-<div style="flex:1; background:var(--row); border:1px dashed var(--border); border-radius:16px; padding:13px 18px; display:flex; flex-direction:column; gap:4px;">
-  <div style="display:flex; align-items:center; gap:8px;">
-    <span style="width:9px; height:9px; border-radius:50%; background:var(--{{.Color}}); flex-shrink:0;"></span>
-    <span style="font-size:14px; font-weight:700;">{{.Day}}</span>
-  </div>
-  <div style="font-size:14px; color:var(--muted);">{{.Text}}</div>
-</div>
-{{end}}

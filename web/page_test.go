@@ -94,6 +94,21 @@ func TestNewPageData(t *testing.T) {
 	}
 }
 
+func TestNewPageData_WeekNumberAndCurrentTime(t *testing.T) {
+	now := time.Date(2026, 9, 18, 7, 42, 0, 0, time.UTC)
+
+	data, err := NewPageData(nil, nil, []string{"Kaj", "Lillian"}, now)
+	if err != nil {
+		t.Fatalf("NewPageData() error = %v", err)
+	}
+	if data.WeekNumber != 38 {
+		t.Errorf("WeekNumber = %d, want 38", data.WeekNumber)
+	}
+	if data.CurrentTime != "09:42" {
+		t.Errorf("CurrentTime = %q, want %q", data.CurrentTime, "09:42")
+	}
+}
+
 func assertHomeworkGroups(t *testing.T, got, want []HomeworkGroup) {
 	t.Helper()
 	if len(got) != len(want) {
@@ -195,6 +210,99 @@ func TestNewPageData_Homework(t *testing.T) {
 	}
 }
 
+func TestSvWeekday(t *testing.T) {
+	tests := []struct {
+		in   string
+		want string
+	}{
+		{"Monday", "Måndag"},
+		{"Tuesday", "Tisdag"},
+		{"Wednesday", "Onsdag"},
+		{"Thursday", "Torsdag"},
+		{"Friday", "Fredag"},
+		{"Saturday", "Lördag"},
+		{"Sunday", "Söndag"},
+		{"Someday", "Someday"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.in, func(t *testing.T) {
+			if got := svWeekday(tt.in); got != tt.want {
+				t.Errorf("svWeekday(%q) = %q, want %q", tt.in, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestSvDateLabel(t *testing.T) {
+	tests := []struct {
+		in   string
+		want string
+	}{
+		{"18 September", "18 september"},
+		{"1 January", "1 januari"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.in, func(t *testing.T) {
+			if got := svDateLabel(tt.in); got != tt.want {
+				t.Errorf("svDateLabel(%q) = %q, want %q", tt.in, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestSvDayLabel(t *testing.T) {
+	tests := []struct {
+		in   string
+		want string
+	}{
+		{"Due today", "idag"},
+		{"Due tomorrow", "imorgon"},
+		{"Wednesday", "onsdag"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.in, func(t *testing.T) {
+			if got := svDayLabel(tt.in); got != tt.want {
+				t.Errorf("svDayLabel(%q) = %q, want %q", tt.in, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestSvTime(t *testing.T) {
+	tests := []struct {
+		in   string
+		want string
+	}{
+		{"All day", "heldag"},
+		{"15:30", "15:30"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.in, func(t *testing.T) {
+			if got := svTime(tt.in); got != tt.want {
+				t.Errorf("svTime(%q) = %q, want %q", tt.in, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestOwnerInitial(t *testing.T) {
+	tests := []struct {
+		in   string
+		want string
+	}{
+		{"Kaj", "K"},
+		{"Lillian", "L"},
+		{"", ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.in, func(t *testing.T) {
+			if got := ownerInitial(tt.in); got != tt.want {
+				t.Errorf("ownerInitial(%q) = %q, want %q", tt.in, got, tt.want)
+			}
+		})
+	}
+}
+
 func TestRender(t *testing.T) {
 	tests := []struct {
 		name string
@@ -221,7 +329,7 @@ func TestRender(t *testing.T) {
 				Events:    nil,
 				Owners:    []string{"Kaj", "Lillian"},
 			},
-			want: []string{"Nothing scheduled today."},
+			want: []string{"Inget planerat idag."},
 		},
 	}
 
