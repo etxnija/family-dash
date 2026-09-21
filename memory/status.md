@@ -229,3 +229,19 @@ Session-to-session progress log. Distinct from AGENTS.md (stable rules).
   matched; added test cases to `web/page_test.go`. Template heading changed to "Läxor och Prov" and rows now show a
   muted `(Prov)` marker when `IsProv` is true (`web/templates/page.html.tmpl`). `go build`, `go vet`, `go test ./...`,
   and `sensors/test.sh`/`sensors/lint.sh` all pass.
+
+## 2026-09-21 — Task: Wire Kommande dagar end to end
+
+- Added `UpcomingEvents(events, now)` (`event.go`): tomorrow-through-day+6 window (Europe/Stockholm), excluding
+  homework/prov-matching events (checks duplicated inline, not shared with `HomeworkEvents`); added `TestUpcomingEvents`
+  to `event_test.go`. Added `UpcomingRow`, `buildUpcomingRows`, and `svWeekdayAbbrev` (+ FuncMap registration) to
+  `web/page.go`; `NewPageData` now takes a third `upcomingEvents` parameter and populates `PageData.Upcoming`; updated
+  all `web/page_test.go` call sites and added `TestNewPageData_Upcoming`/`TestSvWeekdayAbbrev`. Replaced the static
+  "Kommande dagar" placeholder rows in `web/templates/page.html.tmpl` with a data-driven `{{range .Upcoming}}` loop
+  (empty-state message, abbreviated Swedish weekday, `svTime` for the heldag/HH:MM split). `cmd/family-dashboard/main.go`
+  now computes `upcoming := dashboard.UpcomingEvents(events, time.Now())` and passes it through to `web.NewPageData`.
+  Updated `memory/concepts/dashboard-page.md` and `memory/concepts/composition-root.md`. `go build`, `go vet`,
+  `go test ./...`, and `sensors/test.sh`/`sensors/lint.sh` all pass.
+
+
+**Run metrics:** 7 driver call(s), $2.5516, session ff047359-0ca8-4846-9d1f-035662a35a78
