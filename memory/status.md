@@ -267,3 +267,6 @@ Session-to-session progress log. Distinct from AGENTS.md (stable rules).
   more per-request source loop or direct `TodayEvents`/`HomeworkEvents`/`UpcomingEvents`/`WithOwner` calls in main.go.
   Updated `memory/concepts/composition-root.md` and its `index.md` summary line to describe the startup-vs-request
   split. `go build`, `go vet`, `go test ./...`, and `sensors/test.sh`/`sensors/lint.sh` all pass.
+
+
+**Run metrics:** 6 driver call(s), $2.1407, session 392df801-94f7-4389-adc4-a562424dedbf
