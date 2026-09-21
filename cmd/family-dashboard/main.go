@@ -34,7 +34,18 @@ func main() {
 		os.Exit(1)
 	}
 
-	http.HandleFunc("/", handleIndex(sources))
+	var namedSources []dashboard.NamedSource
+	for _, cfg := range sources {
+		source, err := buildSource(cfg)
+		if err != nil {
+			slog.Error("building source", "name", cfg.Name, "type", cfg.Type, "error", err)
+			continue
+		}
+		namedSources = append(namedSources, dashboard.NamedSource{Owner: cfg.Name, Source: source})
+	}
+	collector := dashboard.NewCollector(namedSources)
+
+	http.HandleFunc("/", handleIndex(collector))
 
 	slog.Info("starting server", "addr", *addr)
 	if err := http.ListenAndServe(*addr, nil); err != nil {
@@ -43,55 +54,13 @@ func main() {
 	}
 }
 
-// ownerNames returns the distinct cfg.Name values from sources, in
-// config-file order.
-func ownerNames(sources []config.Source) []string {
-	seen := make(map[string]bool, len(sources))
-	names := make([]string, 0, len(sources))
-	for _, cfg := range sources {
-		if seen[cfg.Name] {
-			continue
-		}
-		seen[cfg.Name] = true
-		names = append(names, cfg.Name)
-	}
-	return names
-}
-
-// handleIndex returns an http.HandlerFunc that fetches events from sources
+// handleIndex returns an http.HandlerFunc that fetches events via collector
 // on every request and renders the HTML dashboard.
-func handleIndex(sources []config.Source) http.HandlerFunc {
-	owners := ownerNames(sources)
-
+func handleIndex(collector *dashboard.Collector) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		var events []dashboard.Event
-		for _, cfg := range sources {
-			source, err := buildSource(cfg)
-			if err != nil {
-				slog.Error("building source", "name", cfg.Name, "type", cfg.Type, "error", err)
-				continue
-			}
+		today, homework, upcoming := collector.Collect(r.Context(), time.Now())
 
-			fetched, err := source.Events(r.Context())
-			if err != nil {
-				slog.Error("fetching events", "source", cfg.Name, "error", err)
-				continue
-			}
-			slog.Info("fetched events", "source", cfg.Name, "count", len(fetched))
-
-			events = append(events, dashboard.WithOwner(fetched, cfg.Name)...)
-		}
-
-		today := dashboard.TodayEvents(events, time.Now())
-		slog.Info("filtered to today", "count", len(today))
-
-		homework := dashboard.HomeworkEvents(events, time.Now())
-		slog.Info("filtered to homework", "count", len(homework))
-
-		upcoming := dashboard.UpcomingEvents(events, time.Now())
-		slog.Info("filtered to upcoming", "count", len(upcoming))
-
-		data, err := web.NewPageData(today, homework, upcoming, owners, time.Now())
+		data, err := web.NewPageData(today, homework, upcoming, collector.Owners(), time.Now())
 		if err != nil {
 			slog.Error("building page data", "error", err)
 			http.Error(w, "internal error", http.StatusInternalServerError)

@@ -245,3 +245,25 @@ Session-to-session progress log. Distinct from AGENTS.md (stable rules).
 
 
 **Run metrics:** 7 driver call(s), $2.5516, session ff047359-0ca8-4846-9d1f-035662a35a78
+
+## 2026-09-21 — Task: Add Collector type and tests
+
+- Added `collector.go` (`NamedSource`, `Collector`, `NewCollector`, `Owners()`, `Collect(ctx, now)`): merges
+  owner-tagged events from multiple `EventSource`s, log-and-continue on a failing source, and derives
+  today/homework/upcoming via the existing `event.go` filters — mirrors `main.go`'s current `ownerNames`/`handleIndex`
+  logic but as a reusable domain type. Not yet wired into `cmd/family-dashboard/main.go` (follow-up task). Added
+  `collector_test.go` (`fakeSource`, table-driven tests for owner merge/tagging, failing-source skip, parity with
+  calling `TodayEvents`/`HomeworkEvents`/`UpcomingEvents` directly, and `Owners()` dedup/order). Added
+  `memory/concepts/collector.md`. `go build`, `go vet`, `go test ./...`, and `sensors/test.sh`/`sensors/lint.sh` all
+  pass.
+
+## 2026-09-21 — Task: Rewire main.go to use Collector
+
+- `cmd/family-dashboard/main.go`'s `main()` now builds each source's adapter once at startup (loop + `buildSource`,
+  log-and-skip on error, same as before) into `[]dashboard.NamedSource`, then calls `dashboard.NewCollector(...)` once
+  and passes the result to `handleIndex`. Removed the `ownerNames` free function — `Collector.Owners()` replaces it.
+  `handleIndex(collector *dashboard.Collector)` closure now just calls `collector.Collect(r.Context(), time.Now())` for
+  the three event slices and `collector.Owners()` for the owner list, then `web.NewPageData`/`web.Render` as before; no
+  more per-request source loop or direct `TodayEvents`/`HomeworkEvents`/`UpcomingEvents`/`WithOwner` calls in main.go.
+  Updated `memory/concepts/composition-root.md` and its `index.md` summary line to describe the startup-vs-request
+  split. `go build`, `go vet`, `go test ./...`, and `sensors/test.sh`/`sensors/lint.sh` all pass.
