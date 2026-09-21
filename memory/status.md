@@ -128,3 +128,8 @@ Session-to-session progress log. Distinct from AGENTS.md (stable rules).
 
 
 **Run metrics:** 7 driver call(s), $3.5247, session 63d7433c-a906-4f59-9ce8-6c0befe942b2
+
+- Wrote ADR-0002 (`docs/arch/adr/0002-dual-display-adapters-over-shared-interface.md`) recording the decision not to share a rendering interface between the `web/` HTML adapter and a future `eink` e-paper adapter — each display target owns its own adapter package and view-model, consuming domain data independently.
+
+
+**Run metrics:** 7 driver call(s), $1.6374, session 60da0967-5837-4840-af88-f5ea6e1ba6c4
