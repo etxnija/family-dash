@@ -180,7 +180,7 @@ func TestHomeworkEvents(t *testing.T) {
 	}
 }
 
-func upcomingEventsFixtures(loc *time.Location) (tomorrow, dayPlusSix, today, dayPlusSeven, homeworkEvent, provEvent dashboard.Event) {
+func upcomingEventsFixtures(loc *time.Location) (tomorrow, dayPlusSix, today, dayPlusSeven, homeworkEvent, provEvent, trainingEvent, cupEvent dashboard.Event) {
 	tomorrow = dashboard.Event{
 		Summary: "Bortamatch",
 		Start:   time.Date(2026, 9, 18, 10, 0, 0, 0, loc),
@@ -212,13 +212,23 @@ func upcomingEventsFixtures(loc *time.Location) (tomorrow, dayPlusSix, today, da
 		Start:       time.Date(2026, 9, 19, 9, 0, 0, 0, loc),
 		End:         time.Date(2026, 9, 19, 10, 0, 0, 0, loc),
 	}
-	return tomorrow, dayPlusSix, today, dayPlusSeven, homeworkEvent, provEvent
+	trainingEvent = dashboard.Event{
+		Summary: "Träning - F2015 Vit",
+		Start:   time.Date(2026, 9, 19, 18, 0, 0, 0, loc),
+		End:     time.Date(2026, 9, 19, 19, 0, 0, 0, loc),
+	}
+	cupEvent = dashboard.Event{
+		Summary: "Cup, mer info kommer senare! - F2015 Vit",
+		Start:   time.Date(2026, 9, 19, 9, 0, 0, 0, loc),
+		End:     time.Date(2026, 9, 19, 10, 0, 0, 0, loc),
+	}
+	return tomorrow, dayPlusSix, today, dayPlusSeven, homeworkEvent, provEvent, trainingEvent, cupEvent
 }
 
 func TestUpcomingEvents(t *testing.T) {
 	loc := stockholm()
 	now := time.Date(2026, 9, 17, 12, 0, 0, 0, loc)
-	tomorrow, dayPlusSix, today, dayPlusSeven, homeworkEvent, provEvent := upcomingEventsFixtures(loc)
+	tomorrow, dayPlusSix, today, dayPlusSeven, homeworkEvent, provEvent, trainingEvent, cupEvent := upcomingEventsFixtures(loc)
 
 	tests := []struct {
 		name   string
@@ -254,6 +264,16 @@ func TestUpcomingEvents(t *testing.T) {
 			name:   "prov event in window is excluded",
 			events: []dashboard.Event{provEvent},
 			want:   nil,
+		},
+		{
+			name:   "training event in window is excluded",
+			events: []dashboard.Event{trainingEvent},
+			want:   nil,
+		},
+		{
+			name:   "cup event in window is included",
+			events: []dashboard.Event{cupEvent},
+			want:   []dashboard.Event{cupEvent},
 		},
 		{
 			name:   "empty input returns nil",

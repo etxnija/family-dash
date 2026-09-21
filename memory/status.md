@@ -270,3 +270,11 @@ Session-to-session progress log. Distinct from AGENTS.md (stable rules).
 
 
 **Run metrics:** 6 driver call(s), $2.1407, session 392df801-94f7-4389-adc4-a562424dedbf
+
+## 2026-09-21 — Task: Exclude training keywords from UpcomingEvents
+
+- Added package-level `excludedKeywords = []string{"träning"}` in `event.go` next to `homeworkPrefix`, and a second,
+  independent `strings.Contains(strings.ToLower(e.Summary), kw)` loop/`continue` in `UpcomingEvents` (kept separate
+  from the existing homework/prov check). Added `trainingEvent`/`cupEvent` fixtures and two `TestUpcomingEvents`
+  cases ("training event in window is excluded", "cup event in window is included") to `event_test.go`. `go build`,
+  `go vet`, `go test ./...` all pass; `gofmt -l` clean on both touched files.

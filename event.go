@@ -50,6 +50,10 @@ func TodayEvents(events []Event, now time.Time) []Event {
 // homeworkPrefix identifies homework events by their Swedish summary prefix.
 const homeworkPrefix = "Läxa "
 
+// excludedKeywords identifies events that should never appear in
+// UpcomingEvents, matched case-insensitively against Summary.
+var excludedKeywords = []string{"träning"}
+
 // HomeworkEvents returns the events from events whose Summary starts with
 // "Läxa " or whose Description contains "prov" (case-insensitive), and
 // whose Start falls within the 7-calendar-day window from now's date
@@ -85,7 +89,8 @@ func HomeworkEvents(events []Event, now time.Time) []Event {
 // UpcomingEvents returns the events from events whose Start falls within the
 // window from tomorrow through now's date plus 6 days (inclusive), in the
 // Europe/Stockholm timezone, excluding events that match the homework/prov
-// criteria (see HomeworkEvents).
+// criteria (see HomeworkEvents) and events whose Summary contains any of
+// excludedKeywords (case-insensitive).
 func UpcomingEvents(events []Event, now time.Time) []Event {
 	loc, err := time.LoadLocation("Europe/Stockholm")
 	if err != nil {
@@ -102,6 +107,16 @@ func UpcomingEvents(events []Event, now time.Time) []Event {
 		isHomework := strings.HasPrefix(e.Summary, homeworkPrefix)
 		isProv := strings.Contains(strings.ToLower(e.Description), "prov")
 		if isHomework || isProv {
+			continue
+		}
+		excluded := false
+		for _, kw := range excludedKeywords {
+			if strings.Contains(strings.ToLower(e.Summary), kw) {
+				excluded = true
+				break
+			}
+		}
+		if excluded {
 			continue
 		}
 		y, m, d := e.Start.In(loc).Date()
