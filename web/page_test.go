@@ -88,7 +88,7 @@ func newPageDataTestCases() []pageDataTestCase {
 func TestNewPageData(t *testing.T) {
 	for _, tt := range newPageDataTestCases() {
 		t.Run(tt.name, func(t *testing.T) {
-			data, err := NewPageData(tt.events, nil, []string{"Kaj", "Lillian"}, tt.now)
+			data, err := NewPageData(tt.events, nil, nil, []string{"Kaj", "Lillian"}, tt.now)
 			if err != nil {
 				t.Fatalf("NewPageData() error = %v", err)
 			}
@@ -117,7 +117,7 @@ func TestNewPageData(t *testing.T) {
 func TestNewPageData_WeekNumberAndCurrentTime(t *testing.T) {
 	now := time.Date(2026, 9, 18, 7, 42, 0, 0, time.UTC)
 
-	data, err := NewPageData(nil, nil, []string{"Kaj", "Lillian"}, now)
+	data, err := NewPageData(nil, nil, nil, []string{"Kaj", "Lillian"}, now)
 	if err != nil {
 		t.Fatalf("NewPageData() error = %v", err)
 	}
@@ -237,11 +237,82 @@ func TestNewPageData_Homework(t *testing.T) {
 
 	for _, tt := range newHomeworkTestCases(loc) {
 		t.Run(tt.name, func(t *testing.T) {
-			data, err := NewPageData(nil, tt.homeworkEvents, tt.owners, now)
+			data, err := NewPageData(nil, tt.homeworkEvents, nil, tt.owners, now)
 			if err != nil {
 				t.Fatalf("NewPageData() error = %v", err)
 			}
 			assertHomeworkGroups(t, data.Homework, tt.wantGroups)
+		})
+	}
+}
+
+func assertUpcomingRows(t *testing.T, got, want []UpcomingRow) {
+	t.Helper()
+	if len(got) != len(want) {
+		t.Fatalf("Upcoming = %+v, want %+v", got, want)
+	}
+	for i := range got {
+		if got[i] != want[i] {
+			t.Errorf("Upcoming[%d] = %+v, want %+v", i, got[i], want[i])
+		}
+	}
+}
+
+func TestNewPageData_Upcoming(t *testing.T) {
+	loc, err := time.LoadLocation("Europe/Stockholm")
+	if err != nil {
+		t.Fatalf("time.LoadLocation() error = %v", err)
+	}
+	now := time.Date(2026, 9, 17, 12, 0, 0, 0, loc)
+
+	tests := []struct {
+		name           string
+		upcomingEvents []dashboard.Event
+		want           []UpcomingRow
+	}{
+		{
+			name: "event with end time produces correct fields",
+			upcomingEvents: []dashboard.Event{
+				{Owner: "Lillian", Summary: "Bortamatch", Location: "Arena", Start: time.Date(2026, 9, 23, 10, 0, 0, 0, loc), End: time.Date(2026, 9, 23, 11, 0, 0, 0, loc)},
+			},
+			want: []UpcomingRow{
+				{Weekday: "Wednesday", Time: "10:00", Owner: "Lillian", Summary: "Bortamatch", Location: "Arena"},
+			},
+		},
+		{
+			name: "all-day event produces Time All day",
+			upcomingEvents: []dashboard.Event{
+				{Owner: "Kaj", Summary: "Innebandyturnering", AllDay: true, Start: time.Date(2026, 9, 24, 0, 0, 0, 0, loc)},
+			},
+			want: []UpcomingRow{
+				{Weekday: "Thursday", Time: "All day", Owner: "Kaj", Summary: "Innebandyturnering"},
+			},
+		},
+		{
+			name: "events are sorted by Start",
+			upcomingEvents: []dashboard.Event{
+				{Owner: "Kaj", Summary: "Second", Start: time.Date(2026, 9, 24, 9, 0, 0, 0, loc)},
+				{Owner: "Lillian", Summary: "First", Start: time.Date(2026, 9, 23, 9, 0, 0, 0, loc)},
+			},
+			want: []UpcomingRow{
+				{Weekday: "Wednesday", Time: "09:00", Owner: "Lillian", Summary: "First"},
+				{Weekday: "Thursday", Time: "09:00", Owner: "Kaj", Summary: "Second"},
+			},
+		},
+		{
+			name:           "empty input produces empty Upcoming slice",
+			upcomingEvents: nil,
+			want:           nil,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			data, err := NewPageData(nil, nil, tt.upcomingEvents, []string{"Kaj", "Lillian"}, now)
+			if err != nil {
+				t.Fatalf("NewPageData() error = %v", err)
+			}
+			assertUpcomingRows(t, data.Upcoming, tt.want)
 		})
 	}
 }
@@ -264,6 +335,29 @@ func TestSvWeekday(t *testing.T) {
 		t.Run(tt.in, func(t *testing.T) {
 			if got := svWeekday(tt.in); got != tt.want {
 				t.Errorf("svWeekday(%q) = %q, want %q", tt.in, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestSvWeekdayAbbrev(t *testing.T) {
+	tests := []struct {
+		in   string
+		want string
+	}{
+		{"Monday", "Mån"},
+		{"Tuesday", "Tis"},
+		{"Wednesday", "Ons"},
+		{"Thursday", "Tors"},
+		{"Friday", "Fre"},
+		{"Saturday", "Lör"},
+		{"Sunday", "Sön"},
+		{"Someday", "Someday"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.in, func(t *testing.T) {
+			if got := svWeekdayAbbrev(tt.in); got != tt.want {
+				t.Errorf("svWeekdayAbbrev(%q) = %q, want %q", tt.in, got, tt.want)
 			}
 		})
 	}

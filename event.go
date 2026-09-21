@@ -82,6 +82,37 @@ func HomeworkEvents(events []Event, now time.Time) []Event {
 	return result
 }
 
+// UpcomingEvents returns the events from events whose Start falls within the
+// window from tomorrow through now's date plus 6 days (inclusive), in the
+// Europe/Stockholm timezone, excluding events that match the homework/prov
+// criteria (see HomeworkEvents).
+func UpcomingEvents(events []Event, now time.Time) []Event {
+	loc, err := time.LoadLocation("Europe/Stockholm")
+	if err != nil {
+		panic(err)
+	}
+
+	today := now.In(loc)
+	year, month, day := today.Date()
+	start := time.Date(year, month, day+1, 0, 0, 0, 0, loc)
+	end := time.Date(year, month, day+6, 0, 0, 0, 0, loc)
+
+	var result []Event
+	for _, e := range events {
+		isHomework := strings.HasPrefix(e.Summary, homeworkPrefix)
+		isProv := strings.Contains(strings.ToLower(e.Description), "prov")
+		if isHomework || isProv {
+			continue
+		}
+		y, m, d := e.Start.In(loc).Date()
+		eventDate := time.Date(y, m, d, 0, 0, 0, 0, loc)
+		if !eventDate.Before(start) && !eventDate.After(end) {
+			result = append(result, e)
+		}
+	}
+	return result
+}
+
 // WithOwner returns a new slice with Owner set to owner on every event.
 func WithOwner(events []Event, owner string) []Event {
 	var result []Event

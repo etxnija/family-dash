@@ -166,10 +166,12 @@
   <hr>
 
   <h2>Kommande dagar</h2>
-  <div class="placeholder-note">(platsh&aring;llare)</div>
-  <div class="row">Ons&nbsp;&nbsp;&nbsp;Lillian &ndash; Bortamatch, 10:00</div>
-  <div class="row">Tors&nbsp;&nbsp;Kaj &ndash; Innebandyturnering, heldag</div>
-  <div class="row">Fre&nbsp;&nbsp;&nbsp;Familj &ndash; Filmkv&auml;ll</div>
+  {{if not .Upcoming}}
+  <div class="row muted">Inga aktiviteter de kommande dagarna.</div>
+  {{end}}
+  {{range .Upcoming}}
+  <div class="row">{{svWeekdayAbbrev .Weekday}}&nbsp;&nbsp;{{.Owner}} &ndash; {{.Summary}}{{if .Location}}, {{.Location}}{{end}}{{if ne (svTime .Time) "heldag"}}, {{svTime .Time}}{{end}}{{if eq (svTime .Time) "heldag"}}, heldag{{end}}</div>
+  {{end}}
 
 </div>
 

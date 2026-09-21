@@ -88,7 +88,10 @@ func handleIndex(sources []config.Source) http.HandlerFunc {
 		homework := dashboard.HomeworkEvents(events, time.Now())
 		slog.Info("filtered to homework", "count", len(homework))
 
-		data, err := web.NewPageData(today, homework, owners, time.Now())
+		upcoming := dashboard.UpcomingEvents(events, time.Now())
+		slog.Info("filtered to upcoming", "count", len(upcoming))
+
+		data, err := web.NewPageData(today, homework, upcoming, owners, time.Now())
 		if err != nil {
 			slog.Error("building page data", "error", err)
 			http.Error(w, "internal error", http.StatusInternalServerError)

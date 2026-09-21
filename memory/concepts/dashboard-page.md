@@ -4,7 +4,7 @@ tags: [web, page, template, i18n, funcmap, receipt-design]
 summary: web/page.go PageData/Render — receipt-style monochrome template, Swedish display translations via FuncMap.
 links: [composition-root.md]
 updated: 2026-09-21
-generated: { by: worker, at: 2026-09-19T00:00:00Z }
+generated: { by: worker, at: 2026-09-21T00:00:00Z }
 ---
 
 # Dashboard Page (`web/page.go` + `web/templates/page.html.tmpl`)
@@ -23,12 +23,18 @@ HTML output is Swedish.
 - `PageData` carries `WeekNumber int` (`localNow.ISOWeek()`) and
   `CurrentTime string` (`localNow.Format("15:04")`) alongside the existing
   `Weekday`/`DateLabel` fields, all computed once in `NewPageData`.
-- Five unexported translation functions in `page.go` are registered in the
+- Six unexported translation functions in `page.go` are registered in the
   template's `template.FuncMap`, not called from Go code directly:
-  `svWeekday`, `svDateLabel`, `svDayLabel`, `svTime`, `ownerInitial`. Each
-  passes through unrecognized input unchanged (e.g. `svWeekday` on an
-  already-Swedish or unknown string) rather than erroring, since templates
-  have no error-return path.
+  `svWeekday`, `svDateLabel`, `svDayLabel`, `svTime`, `ownerInitial`,
+  `svWeekdayAbbrev`. Each passes through unrecognized input unchanged (e.g.
+  `svWeekday` on an already-Swedish or unknown string) rather than erroring,
+  since templates have no error-return path.
+- "Kommande dagar" is a data-driven loop like Idag/Homework:
+  `buildUpcomingRows` sorts `dashboard.UpcomingEvents` output by `Start` and
+  flattens into `UpcomingRow` (`Weekday`, `Time`, `Owner`, `Summary`,
+  `Location`); the template abbreviates `Weekday` via `svWeekdayAbbrev`
+  (e.g. `"Wednesday"` → `"Ons"`) and reuses `svTime` to render `"heldag"`
+  for all-day events instead of an HH:MM time.
 - `svDayLabel` covers both the two fixed English phrases
   (`homeworkDayLabel`'s `"Due today"`/`"Due tomorrow"`) and its weekday-name
   fallback, by reusing the `svWeekdays` map lowercased.
@@ -41,8 +47,9 @@ HTML output is Swedish.
   schedule panel's owner chips in the prior card-based design.
 - The `dict` FuncMap helper and `{{define "comingUpCard"}}` sub-template
   were removed together: `dict` existed only to pass named args into that
-  sub-template, and the "Kommande dagar" section is now static placeholder
-  markup (like Skolschema/Skollunch), not a data-driven loop.
+  sub-template. "Kommande dagar" started as static placeholder markup (like
+  Skolschema/Skollunch) but was later wired to `dashboard.UpcomingEvents`
+  (see above) — Skolschema/Skollunch remain static placeholders.
 - `HomeworkRow.IsProv` is computed independently of which branch of
   `dashboard.HomeworkEvents`'s filter matched (summary prefix vs.
   description) — it's always `strings.Contains(strings.ToLower(e.Description), "prov")`,

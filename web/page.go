@@ -18,12 +18,13 @@ import (
 var templateFS embed.FS
 
 var pageTemplate = template.Must(template.New("").Funcs(template.FuncMap{
-	"ownerColor":   ownerColor,
-	"svWeekday":    svWeekday,
-	"svDateLabel":  svDateLabel,
-	"svDayLabel":   svDayLabel,
-	"svTime":       svTime,
-	"ownerInitial": ownerInitial,
+	"ownerColor":      ownerColor,
+	"svWeekday":       svWeekday,
+	"svDateLabel":     svDateLabel,
+	"svDayLabel":      svDayLabel,
+	"svTime":          svTime,
+	"ownerInitial":    ownerInitial,
+	"svWeekdayAbbrev": svWeekdayAbbrev,
 }).ParseFS(templateFS, "templates/page.html.tmpl"))
 
 // EventRow is the flattened, display-ready view of a dashboard.Event.
@@ -51,6 +52,16 @@ type HomeworkGroup struct {
 	Items []HomeworkRow
 }
 
+// UpcomingRow is the flattened, display-ready view of an upcoming
+// dashboard.Event.
+type UpcomingRow struct {
+	Weekday  string
+	Time     string
+	Owner    string
+	Summary  string
+	Location string
+}
+
 // PageData holds everything the page template needs to render.
 type PageData struct {
 	Weekday     string
@@ -60,6 +71,7 @@ type PageData struct {
 	Events      []EventRow
 	Owners      []string
 	Homework    []HomeworkGroup
+	Upcoming    []UpcomingRow
 }
 
 // ownerColors maps a known owner name to its CSS custom-property name.
@@ -77,9 +89,9 @@ func ownerColor(name string) string {
 	return "--family"
 }
 
-// NewPageData builds a PageData for events, homeworkEvents, owners, and now,
-// converting all times to Europe/Stockholm for display.
-func NewPageData(events []dashboard.Event, homeworkEvents []dashboard.Event, owners []string, now time.Time) (PageData, error) {
+// NewPageData builds a PageData for events, homeworkEvents, upcomingEvents,
+// owners, and now, converting all times to Europe/Stockholm for display.
+func NewPageData(events []dashboard.Event, homeworkEvents []dashboard.Event, upcomingEvents []dashboard.Event, owners []string, now time.Time) (PageData, error) {
 	loc, err := time.LoadLocation("Europe/Stockholm")
 	if err != nil {
 		return PageData{}, err
@@ -96,6 +108,7 @@ func NewPageData(events []dashboard.Event, homeworkEvents []dashboard.Event, own
 		Events:      buildEventRows(events, loc),
 		Owners:      owners,
 		Homework:    buildHomeworkGroups(homeworkEvents, owners, localNow, loc),
+		Upcoming:    buildUpcomingRows(upcomingEvents, loc),
 	}, nil
 }
 
@@ -180,6 +193,53 @@ func homeworkDayLabel(offset int, eventDate time.Time) string {
 	default:
 		return eventDate.Weekday().String()
 	}
+}
+
+// buildUpcomingRows flattens events into display-ready rows sorted by Start,
+// converting times to loc.
+func buildUpcomingRows(events []dashboard.Event, loc *time.Location) []UpcomingRow {
+	sorted := make([]dashboard.Event, len(events))
+	copy(sorted, events)
+	sort.Slice(sorted, func(i, j int) bool {
+		return sorted[i].Start.Before(sorted[j].Start)
+	})
+
+	rows := make([]UpcomingRow, 0, len(sorted))
+	for _, e := range sorted {
+		start := e.Start.In(loc)
+		timeStr := start.Format("15:04")
+		if e.AllDay {
+			timeStr = "All day"
+		}
+		rows = append(rows, UpcomingRow{
+			Weekday:  start.Format("Monday"),
+			Time:     timeStr,
+			Owner:    e.Owner,
+			Summary:  e.Summary,
+			Location: e.Location,
+		})
+	}
+	return rows
+}
+
+// svWeekdayAbbrevs maps English weekday names to abbreviated Swedish forms.
+var svWeekdayAbbrevs = map[string]string{
+	"Monday":    "Mån",
+	"Tuesday":   "Tis",
+	"Wednesday": "Ons",
+	"Thursday":  "Tors",
+	"Friday":    "Fre",
+	"Saturday":  "Lör",
+	"Sunday":    "Sön",
+}
+
+// svWeekdayAbbrev translates an English weekday name to its abbreviated
+// Swedish form, passing through any string it doesn't recognize.
+func svWeekdayAbbrev(s string) string {
+	if sv, ok := svWeekdayAbbrevs[s]; ok {
+		return sv
+	}
+	return s
 }
 
 // svWeekdays maps English weekday names (as produced by time.Format

@@ -180,6 +180,95 @@ func TestHomeworkEvents(t *testing.T) {
 	}
 }
 
+func upcomingEventsFixtures(loc *time.Location) (tomorrow, dayPlusSix, today, dayPlusSeven, homeworkEvent, provEvent dashboard.Event) {
+	tomorrow = dashboard.Event{
+		Summary: "Bortamatch",
+		Start:   time.Date(2026, 9, 18, 10, 0, 0, 0, loc),
+		End:     time.Date(2026, 9, 18, 11, 0, 0, 0, loc),
+	}
+	dayPlusSix = dashboard.Event{
+		Summary: "Innebandyturnering",
+		Start:   time.Date(2026, 9, 23, 9, 0, 0, 0, loc),
+		End:     time.Date(2026, 9, 23, 10, 0, 0, 0, loc),
+	}
+	today = dashboard.Event{
+		Summary: "Simskola",
+		Start:   time.Date(2026, 9, 17, 9, 0, 0, 0, loc),
+		End:     time.Date(2026, 9, 17, 10, 0, 0, 0, loc),
+	}
+	dayPlusSeven = dashboard.Event{
+		Summary: "Filmkväll",
+		Start:   time.Date(2026, 9, 24, 9, 0, 0, 0, loc),
+		End:     time.Date(2026, 9, 24, 10, 0, 0, 0, loc),
+	}
+	homeworkEvent = dashboard.Event{
+		Summary: "Läxa matte",
+		Start:   time.Date(2026, 9, 19, 9, 0, 0, 0, loc),
+		End:     time.Date(2026, 9, 19, 10, 0, 0, 0, loc),
+	}
+	provEvent = dashboard.Event{
+		Summary:     "Matteprov åk 5",
+		Description: "Skriftligt prov i matematik",
+		Start:       time.Date(2026, 9, 19, 9, 0, 0, 0, loc),
+		End:         time.Date(2026, 9, 19, 10, 0, 0, 0, loc),
+	}
+	return tomorrow, dayPlusSix, today, dayPlusSeven, homeworkEvent, provEvent
+}
+
+func TestUpcomingEvents(t *testing.T) {
+	loc := stockholm()
+	now := time.Date(2026, 9, 17, 12, 0, 0, 0, loc)
+	tomorrow, dayPlusSix, today, dayPlusSeven, homeworkEvent, provEvent := upcomingEventsFixtures(loc)
+
+	tests := []struct {
+		name   string
+		events []dashboard.Event
+		want   []dashboard.Event
+	}{
+		{
+			name:   "event tomorrow is included",
+			events: []dashboard.Event{tomorrow},
+			want:   []dashboard.Event{tomorrow},
+		},
+		{
+			name:   "event on day+6 boundary is included",
+			events: []dashboard.Event{dayPlusSix},
+			want:   []dashboard.Event{dayPlusSix},
+		},
+		{
+			name:   "event today is excluded",
+			events: []dashboard.Event{today},
+			want:   nil,
+		},
+		{
+			name:   "event on day+7 is excluded",
+			events: []dashboard.Event{dayPlusSeven},
+			want:   nil,
+		},
+		{
+			name:   "homework event in window is excluded",
+			events: []dashboard.Event{homeworkEvent},
+			want:   nil,
+		},
+		{
+			name:   "prov event in window is excluded",
+			events: []dashboard.Event{provEvent},
+			want:   nil,
+		},
+		{
+			name:   "empty input returns nil",
+			events: []dashboard.Event{},
+			want:   nil,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assertTodayEvents(t, dashboard.UpcomingEvents(tt.events, now), tt.want)
+		})
+	}
+}
+
 func assertOwners(t *testing.T, got []dashboard.Event, want []string) {
 	t.Helper()
 	if len(got) != len(want) {
