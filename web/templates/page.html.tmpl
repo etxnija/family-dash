@@ -148,6 +148,7 @@
   {{end}}
   {{range .Events}}
   <div class="row"><b>{{svTime .Time}}</b>&nbsp;&nbsp;{{.Owner}} &ndash; {{.Summary}}{{if .Location}}, {{.Location}}{{end}}</div>
+  {{if .Description}}<div class="row muted">{{.Description}}</div>{{end}}
   {{end}}
 
   <hr>

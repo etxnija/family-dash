@@ -13,10 +13,11 @@ type pageDataTestCase struct {
 	name          string
 	events        []dashboard.Event
 	now           time.Time
-	wantTime      string
-	wantTimeRange string
-	wantWeekday   string
-	wantDateLabel string
+	wantTime        string
+	wantTimeRange   string
+	wantWeekday     string
+	wantDateLabel   string
+	wantDescription string
 }
 
 func newPageDataTestCases() []pageDataTestCase {
@@ -65,6 +66,22 @@ func newPageDataTestCases() []pageDataTestCase {
 			wantWeekday:   "Friday",
 			wantDateLabel: "18 September",
 		},
+		{
+			name: "event with description",
+			events: []dashboard.Event{
+				{
+					Summary:     "Dentist",
+					Description: "Bring insurance card",
+					Start:       time.Date(2026, 9, 18, 8, 0, 0, 0, time.UTC),
+				},
+			},
+			now:             time.Date(2026, 9, 18, 6, 0, 0, 0, time.UTC),
+			wantTime:        "10:00",
+			wantTimeRange:   "10:00",
+			wantWeekday:     "Friday",
+			wantDateLabel:   "18 September",
+			wantDescription: "Bring insurance card",
+		},
 	}
 }
 
@@ -89,6 +106,9 @@ func TestNewPageData(t *testing.T) {
 			}
 			if data.DateLabel != tt.wantDateLabel {
 				t.Errorf("DateLabel = %q, want %q", data.DateLabel, tt.wantDateLabel)
+			}
+			if got := data.Events[0].Description; got != tt.wantDescription {
+				t.Errorf("Description = %q, want %q", got, tt.wantDescription)
 			}
 		})
 	}

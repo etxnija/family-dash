@@ -28,11 +28,12 @@ var pageTemplate = template.Must(template.New("").Funcs(template.FuncMap{
 
 // EventRow is the flattened, display-ready view of a dashboard.Event.
 type EventRow struct {
-	Time      string
-	TimeRange string
-	Summary   string
-	Location  string
-	Owner     string
+	Time        string
+	TimeRange   string
+	Summary     string
+	Location    string
+	Description string
+	Owner       string
 }
 
 // HomeworkRow is the flattened, display-ready view of a homework
@@ -115,11 +116,12 @@ func buildEventRows(events []dashboard.Event, loc *time.Location) []EventRow {
 			}
 		}
 		rows = append(rows, EventRow{
-			Time:      timeStr,
-			TimeRange: timeRange,
-			Summary:   e.Summary,
-			Location:  e.Location,
-			Owner:     e.Owner,
+			Time:        timeStr,
+			TimeRange:   timeRange,
+			Summary:     e.Summary,
+			Location:    e.Location,
+			Description: e.Description,
+			Owner:       e.Owner,
 		})
 	}
 	return rows

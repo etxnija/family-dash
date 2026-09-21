@@ -134,5 +134,12 @@ Session-to-session progress log. Distinct from AGENTS.md (stable rules).
 
 **Run metrics:** 7 driver call(s), $1.6374, session 60da0967-5837-4840-af88-f5ea6e1ba6c4
 
+## 2026-09-21 — Task: Show event description in Idag
+
+- Added `Description string` to `EventRow` (`web/page.go`), populated from `e.Description` in `buildEventRows`; template renders it conditionally as a muted row after the event line in `page.html.tmpl` (`{{if .Description}}...{{end}}`, no markup when empty); added `wantDescription` to `pageDataTestCase` plus a new "event with description" case and assertion in `TestNewPageData` (`web/page_test.go`). `go build`, `go vet`, `go test ./...` all pass.
+
 
 **Run metrics:** 5 driver call(s), $2.1638, session 08377e76-e26e-41e4-b1f3-c20608b2f584
+
+
+**Run metrics:** 6 driver call(s), $3.4730, session e5c3b2c5-3524-463e-bdaa-f24e26b720ac
