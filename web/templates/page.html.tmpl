@@ -153,13 +153,13 @@
 
   <hr>
 
-  <h2>L&auml;xor</h2>
+  <h2>L&auml;xor och Prov</h2>
   {{if not .Homework}}
   <div class="row muted">Inga l&auml;xor den h&auml;r veckan.</div>
   {{end}}
   {{range $group := .Homework}}
   {{range $group.Items}}
-  <div class="row"><b>{{ownerInitial $group.Owner}}</b>&nbsp;&nbsp;{{.Summary}} &ndash; {{svDayLabel .DayLabel}}</div>
+  <div class="row"><b>{{ownerInitial $group.Owner}}</b>&nbsp;&nbsp;{{.Summary}}{{if .IsProv}} <span class="muted">(Prov)</span>{{end}} &ndash; {{svDayLabel .DayLabel}}</div>
   {{end}}
   {{end}}
 

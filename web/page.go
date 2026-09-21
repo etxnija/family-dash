@@ -42,6 +42,7 @@ type HomeworkRow struct {
 	Summary  string
 	DayLabel string
 	IsToday  bool
+	IsProv   bool
 }
 
 // HomeworkGroup collects the homework items due for a single owner.
@@ -159,6 +160,7 @@ func buildHomeworkGroups(homeworkEvents []dashboard.Event, owners []string, loca
 				Summary:  e.Summary,
 				DayLabel: homeworkDayLabel(offset, eventLocal),
 				IsToday:  offset == 0,
+				IsProv:   strings.Contains(strings.ToLower(e.Description), "prov"),
 			})
 		}
 		homework = append(homework, HomeworkGroup{Owner: owner, Items: items})

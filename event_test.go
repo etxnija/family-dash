@@ -100,7 +100,7 @@ func TestTodayEvents(t *testing.T) {
 	}
 }
 
-func homeworkEventsFixtures(loc *time.Location) (dayZero, daySix, daySeven, sportsAllDay dashboard.Event) {
+func homeworkEventsFixtures(loc *time.Location) (dayZero, daySix, daySeven, sportsAllDay, provEvent dashboard.Event) {
 	dayZero = dashboard.Event{
 		Summary: "Läxa matte",
 		Start:   time.Date(2026, 9, 17, 9, 0, 0, 0, loc),
@@ -122,13 +122,19 @@ func homeworkEventsFixtures(loc *time.Location) (dayZero, daySix, daySeven, spor
 		Start:   time.Date(2026, 9, 18, 0, 0, 0, 0, loc),
 		End:     time.Date(2026, 9, 19, 0, 0, 0, 0, loc),
 	}
-	return dayZero, daySix, daySeven, sportsAllDay
+	provEvent = dashboard.Event{
+		Summary:     "Matteprov åk 5",
+		Description: "Skriftligt prov i matematik",
+		Start:       time.Date(2026, 9, 18, 9, 0, 0, 0, loc),
+		End:         time.Date(2026, 9, 18, 10, 0, 0, 0, loc),
+	}
+	return dayZero, daySix, daySeven, sportsAllDay, provEvent
 }
 
 func TestHomeworkEvents(t *testing.T) {
 	loc := stockholm()
 	now := time.Date(2026, 9, 17, 12, 0, 0, 0, loc)
-	dayZero, daySix, daySeven, sportsAllDay := homeworkEventsFixtures(loc)
+	dayZero, daySix, daySeven, sportsAllDay, provEvent := homeworkEventsFixtures(loc)
 
 	tests := []struct {
 		name   string
@@ -154,6 +160,11 @@ func TestHomeworkEvents(t *testing.T) {
 			name:   "non-homework event within window is excluded",
 			events: []dashboard.Event{sportsAllDay},
 			want:   nil,
+		},
+		{
+			name:   "event matched by prov in description is included",
+			events: []dashboard.Event{provEvent},
+			want:   []dashboard.Event{provEvent},
 		},
 		{
 			name:   "empty input returns nil",

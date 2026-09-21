@@ -51,8 +51,9 @@ func TodayEvents(events []Event, now time.Time) []Event {
 const homeworkPrefix = "Läxa "
 
 // HomeworkEvents returns the events from events whose Summary starts with
-// "Läxa " and whose Start falls within the 7-calendar-day window from now's
-// date through now's date plus 6 days (inclusive), in the Europe/Stockholm
+// "Läxa " or whose Description contains "prov" (case-insensitive), and
+// whose Start falls within the 7-calendar-day window from now's date
+// through now's date plus 6 days (inclusive), in the Europe/Stockholm
 // timezone.
 func HomeworkEvents(events []Event, now time.Time) []Event {
 	loc, err := time.LoadLocation("Europe/Stockholm")
@@ -67,7 +68,9 @@ func HomeworkEvents(events []Event, now time.Time) []Event {
 
 	var result []Event
 	for _, e := range events {
-		if !strings.HasPrefix(e.Summary, homeworkPrefix) {
+		isHomework := strings.HasPrefix(e.Summary, homeworkPrefix)
+		isProv := strings.Contains(strings.ToLower(e.Description), "prov")
+		if !isHomework && !isProv {
 			continue
 		}
 		y, m, d := e.Start.In(loc).Date()

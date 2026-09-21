@@ -3,7 +3,7 @@ type: component
 tags: [web, page, template, i18n, funcmap, receipt-design]
 summary: web/page.go PageData/Render — receipt-style monochrome template, Swedish display translations via FuncMap.
 links: [composition-root.md]
-updated: 2026-09-19
+updated: 2026-09-21
 generated: { by: worker, at: 2026-09-19T00:00:00Z }
 ---
 
@@ -43,6 +43,11 @@ HTML output is Swedish.
   were removed together: `dict` existed only to pass named args into that
   sub-template, and the "Kommande dagar" section is now static placeholder
   markup (like Skolschema/Skollunch), not a data-driven loop.
+- `HomeworkRow.IsProv` is computed independently of which branch of
+  `dashboard.HomeworkEvents`'s filter matched (summary prefix vs.
+  description) — it's always `strings.Contains(strings.ToLower(e.Description), "prov")`,
+  so a "Läxa " event with "prov" in its description still gets the marker.
+  The template renders it as a muted `(Prov)` suffix after `.Summary`.
 
 ## Gotchas & Failure Modes
 - Adding a new day-label or date value that doesn't map into `svWeekdays`

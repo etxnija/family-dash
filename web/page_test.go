@@ -159,54 +159,70 @@ type homeworkTestCase struct {
 }
 
 func newHomeworkTestCases(loc *time.Location) []homeworkTestCase {
-	homeworkEvent := func(owner string, summary string, dayOffset int) dashboard.Event {
+	homeworkEvent := func(owner, summary, description string, dayOffset int) dashboard.Event {
 		start := time.Date(2026, 9, 17+dayOffset, 9, 0, 0, 0, loc)
-		return dashboard.Event{Owner: owner, Summary: summary, Start: start}
+		return dashboard.Event{Owner: owner, Summary: summary, Description: description, Start: start}
 	}
 
 	return []homeworkTestCase{
 		{
 			name:           "day label is Due today for an event starting today",
-			homeworkEvents: []dashboard.Event{homeworkEvent("Kaj", "Math worksheet", 0)},
+			homeworkEvents: []dashboard.Event{homeworkEvent("Kaj", "Math worksheet", "", 0)},
 			owners:         []string{"Kaj"},
 			wantGroups: []HomeworkGroup{
-				{Owner: "Kaj", Items: []HomeworkRow{{Summary: "Math worksheet", DayLabel: "Due today", IsToday: true}}},
+				{Owner: "Kaj", Items: []HomeworkRow{{Summary: "Math worksheet", DayLabel: "Due today", IsToday: true, IsProv: false}}},
 			},
 		},
 		{
 			name:           "day label is Due tomorrow for an event starting tomorrow",
-			homeworkEvents: []dashboard.Event{homeworkEvent("Kaj", "Read ch. 4", 1)},
+			homeworkEvents: []dashboard.Event{homeworkEvent("Kaj", "Read ch. 4", "", 1)},
 			owners:         []string{"Kaj"},
 			wantGroups: []HomeworkGroup{
-				{Owner: "Kaj", Items: []HomeworkRow{{Summary: "Read ch. 4", DayLabel: "Due tomorrow", IsToday: false}}},
+				{Owner: "Kaj", Items: []HomeworkRow{{Summary: "Read ch. 4", DayLabel: "Due tomorrow", IsToday: false, IsProv: false}}},
 			},
 		},
 		{
 			name:           "day label is the weekday name for day+2 through day+6",
-			homeworkEvents: []dashboard.Event{homeworkEvent("Kaj", "Spelling words", 6)},
+			homeworkEvents: []dashboard.Event{homeworkEvent("Kaj", "Spelling words", "", 6)},
 			owners:         []string{"Kaj"},
 			wantGroups: []HomeworkGroup{
-				{Owner: "Kaj", Items: []HomeworkRow{{Summary: "Spelling words", DayLabel: "Wednesday", IsToday: false}}},
+				{Owner: "Kaj", Items: []HomeworkRow{{Summary: "Spelling words", DayLabel: "Wednesday", IsToday: false, IsProv: false}}},
+			},
+		},
+		{
+			name:           "prov event has IsProv true",
+			homeworkEvents: []dashboard.Event{homeworkEvent("Kaj", "Matteprov", "Prov i matematik", 0)},
+			owners:         []string{"Kaj"},
+			wantGroups: []HomeworkGroup{
+				{Owner: "Kaj", Items: []HomeworkRow{{Summary: "Matteprov", DayLabel: "Due today", IsToday: true, IsProv: true}}},
+			},
+		},
+		{
+			name:           "regular homework has IsProv false",
+			homeworkEvents: []dashboard.Event{homeworkEvent("Kaj", "Math worksheet", "", 0)},
+			owners:         []string{"Kaj"},
+			wantGroups: []HomeworkGroup{
+				{Owner: "Kaj", Items: []HomeworkRow{{Summary: "Math worksheet", DayLabel: "Due today", IsToday: true, IsProv: false}}},
 			},
 		},
 		{
 			name:           "owners with no homework events produce no group entry",
-			homeworkEvents: []dashboard.Event{homeworkEvent("Kaj", "Math worksheet", 0)},
+			homeworkEvents: []dashboard.Event{homeworkEvent("Kaj", "Math worksheet", "", 0)},
 			owners:         []string{"Kaj", "Lillian"},
 			wantGroups: []HomeworkGroup{
-				{Owner: "Kaj", Items: []HomeworkRow{{Summary: "Math worksheet", DayLabel: "Due today", IsToday: true}}},
+				{Owner: "Kaj", Items: []HomeworkRow{{Summary: "Math worksheet", DayLabel: "Due today", IsToday: true, IsProv: false}}},
 			},
 		},
 		{
 			name: "grouping respects the owners slice order",
 			homeworkEvents: []dashboard.Event{
-				homeworkEvent("Lillian", "Spelling words", 0),
-				homeworkEvent("Kaj", "Math worksheet", 0),
+				homeworkEvent("Lillian", "Spelling words", "", 0),
+				homeworkEvent("Kaj", "Math worksheet", "", 0),
 			},
 			owners: []string{"Lillian", "Kaj"},
 			wantGroups: []HomeworkGroup{
-				{Owner: "Lillian", Items: []HomeworkRow{{Summary: "Spelling words", DayLabel: "Due today", IsToday: true}}},
-				{Owner: "Kaj", Items: []HomeworkRow{{Summary: "Math worksheet", DayLabel: "Due today", IsToday: true}}},
+				{Owner: "Lillian", Items: []HomeworkRow{{Summary: "Spelling words", DayLabel: "Due today", IsToday: true, IsProv: false}}},
+				{Owner: "Kaj", Items: []HomeworkRow{{Summary: "Math worksheet", DayLabel: "Due today", IsToday: true, IsProv: false}}},
 			},
 		},
 	}
