@@ -13,6 +13,7 @@ import (
 
 	dashboard "family-dashboard"
 	"family-dashboard/config"
+	"family-dashboard/skolmaten"
 	"family-dashboard/web"
 	"family-dashboard/webcal"
 )
@@ -28,24 +29,31 @@ func main() {
 		os.Exit(2)
 	}
 
-	sources, err := config.Load(*configPath)
+	cfg, err := config.Load(*configPath)
 	if err != nil {
 		slog.Error("loading sources", "error", err)
 		os.Exit(1)
 	}
 
 	var namedSources []dashboard.NamedSource
-	for _, cfg := range sources {
-		source, err := buildSource(cfg)
+	for _, src := range cfg.Sources {
+		source, err := buildSource(src)
 		if err != nil {
-			slog.Error("building source", "name", cfg.Name, "type", cfg.Type, "error", err)
+			slog.Error("building source", "name", src.Name, "type", src.Type, "error", err)
 			continue
 		}
-		namedSources = append(namedSources, dashboard.NamedSource{Owner: cfg.Name, Source: source})
+		namedSources = append(namedSources, dashboard.NamedSource{Owner: src.Name, Source: source})
 	}
 	collector := dashboard.NewCollector(namedSources)
 
-	http.HandleFunc("/", handleIndex(collector))
+	var lunchSource dashboard.LunchSource
+	if cfg.School.RSSURL == "" {
+		slog.Info("no school lunch feed configured")
+	} else {
+		lunchSource = skolmaten.New(cfg.School.RSSURL, http.DefaultClient)
+	}
+
+	http.HandleFunc("/", handleIndex(collector, lunchSource))
 
 	slog.Info("starting server", "addr", *addr)
 	if err := http.ListenAndServe(*addr, nil); err != nil {
@@ -55,12 +63,23 @@ func main() {
 }
 
 // handleIndex returns an http.HandlerFunc that fetches events via collector
-// on every request and renders the HTML dashboard.
-func handleIndex(collector *dashboard.Collector) http.HandlerFunc {
+// and the lunch menu via lunchSource on every request and renders the HTML
+// dashboard. lunchSource may be nil if no school lunch feed is configured.
+func handleIndex(collector *dashboard.Collector, lunchSource dashboard.LunchSource) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		today, homework, upcoming := collector.Collect(r.Context(), time.Now())
 
-		data, err := web.NewPageData(today, homework, upcoming, collector.Owners(), time.Now())
+		var dishes []string
+		if lunchSource != nil {
+			menu, err := lunchSource.Lunch(r.Context())
+			if err != nil {
+				slog.Error("fetching lunch menu", "error", err)
+			} else {
+				dishes = menu.Dishes
+			}
+		}
+
+		data, err := web.NewPageData(today, homework, upcoming, collector.Owners(), dishes, time.Now())
 		if err != nil {
 			slog.Error("building page data", "error", err)
 			http.Error(w, "internal error", http.StatusInternalServerError)

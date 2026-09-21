@@ -136,9 +136,12 @@
   <hr>
 
   <h2>Skollunch</h2>
-  <div class="placeholder-note">(platsh&aring;llare)</div>
-  <div class="row"><b>K</b>&nbsp;&nbsp;Fiskgrat&auml;ng med potatis</div>
-  <div class="row"><b>L</b>&nbsp;&nbsp;Vegetariska tacos</div>
+  {{if not .Lunch}}
+  <div class="row muted">Ingen lunchmeny idag.</div>
+  {{end}}
+  {{range .Lunch}}
+  <div class="row">{{.}}</div>
+  {{end}}
 
   <hr>
 

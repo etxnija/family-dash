@@ -238,11 +238,10 @@ Session-to-session progress log. Distinct from AGENTS.md (stable rules).
   `web/page.go`; `NewPageData` now takes a third `upcomingEvents` parameter and populates `PageData.Upcoming`; updated
   all `web/page_test.go` call sites and added `TestNewPageData_Upcoming`/`TestSvWeekdayAbbrev`. Replaced the static
   "Kommande dagar" placeholder rows in `web/templates/page.html.tmpl` with a data-driven `{{range .Upcoming}}` loop
-  (empty-state message, abbreviated Swedish weekday, `svTime` for the heldag/HH:MM split). `cmd/family-dashboard/main.go`
-  now computes `upcoming := dashboard.UpcomingEvents(events, time.Now())` and passes it through to `web.NewPageData`.
-  Updated `memory/concepts/dashboard-page.md` and `memory/concepts/composition-root.md`. `go build`, `go vet`,
-  `go test ./...`, and `sensors/test.sh`/`sensors/lint.sh` all pass.
-
+  (empty-state message, abbreviated Swedish weekday, `svTime` for the heldag/HH:MM split).
+  `cmd/family-dashboard/main.go` now computes `upcoming := dashboard.UpcomingEvents(events, time.Now())` and passes it
+  through to `web.NewPageData`. Updated `memory/concepts/dashboard-page.md` and `memory/concepts/composition-root.md`.
+  `go build`, `go vet`, `go test ./...`, and `sensors/test.sh`/`sensors/lint.sh` all pass.
 
 **Run metrics:** 7 driver call(s), $2.5516, session ff047359-0ca8-4846-9d1f-035662a35a78
 
@@ -268,19 +267,55 @@ Session-to-session progress log. Distinct from AGENTS.md (stable rules).
   Updated `memory/concepts/composition-root.md` and its `index.md` summary line to describe the startup-vs-request
   split. `go build`, `go vet`, `go test ./...`, and `sensors/test.sh`/`sensors/lint.sh` all pass.
 
-
 **Run metrics:** 6 driver call(s), $2.1407, session 392df801-94f7-4389-adc4-a562424dedbf
 
 ## 2026-09-21 — Task: Exclude training keywords from UpcomingEvents
 
 - Added package-level `excludedKeywords = []string{"träning"}` in `event.go` next to `homeworkPrefix`, and a second,
-  independent `strings.Contains(strings.ToLower(e.Summary), kw)` loop/`continue` in `UpcomingEvents` (kept separate
-  from the existing homework/prov check). Added `trainingEvent`/`cupEvent` fixtures and two `TestUpcomingEvents`
-  cases ("training event in window is excluded", "cup event in window is included") to `event_test.go`. `go build`,
-  `go vet`, `go test ./...` all pass; `gofmt -l` clean on both touched files.
-
+  independent `strings.Contains(strings.ToLower(e.Summary), kw)` loop/`continue` in `UpcomingEvents` (kept separate from
+  the existing homework/prov check). Added `trainingEvent`/`cupEvent` fixtures and two `TestUpcomingEvents` cases
+  ("training event in window is excluded", "cup event in window is included") to `event_test.go`. `go build`, `go vet`,
+  `go test ./...` all pass; `gofmt -l` clean on both touched files.
 
 **Run metrics:** 6 driver call(s), $1.9861, session d67ba3d3-f85b-4b29-80e8-56c997a201e1
 
-
 **Run metrics:** 11 driver call(s), $7.2493, session 2b158d58-0dfb-4f78-96e0-47426c5e7247
+
+## 2026-09-21 — Task 1: Restructure config to object root with school field
+
+- `config/config.go` now defines `School{Name, RSSURL}` and `Config{Sources []Source, School School}`; `Load` returns
+  `(Config, error)` instead of `([]Source, error)`. Updated `config/config_test.go` fixtures/assertions to the new
+  `{"sources": [...], "school": {...}}` shape and `cfg.Sources`/`cfg.School`. Updated `sources.local.example.json` to
+  wrap the source array under `"sources"` and added a `"school"` entry for "Nya Elementar".
+  `cmd/family-dashboard/main.go` now loops over `cfg.Sources`. This is prep for a later task wiring the skolmaten lunch
+  adapter (see plan.md). `go
+  build`, `go test ./...` all pass.
+
+## 2026-09-21 — Task 2: Add domain types and skolmaten adapter
+
+- Added `lunch.go` (`package dashboard`): `LunchMenu{Dishes []string}` and `LunchSource` port
+  (`Lunch(ctx) (LunchMenu, error)`), mirroring `Event`/`EventSource`. Added `skolmaten/skolmaten.go`: `Client` (url +
+  `*http.Client`), `New(url, client) *Client`, and `Lunch(ctx)` implementing `dashboard.LunchSource` by fetching the RSS
+  feed and parsing the first `<item>`'s `<description>` — dishes are split on literal `"<br/>"` text, trimmed of
+  whitespace and a trailing comma; zero `<item>` elements yields empty dishes, not an error. Added
+  `skolmaten/skolmaten_test.go` with a `stubRoundTripper` (same pattern as `webcal/sportadmin_test.go`) covering a
+  3-dish example feed, a zero-item feed, and an HTTP error. Not yet wired into `main.go`/`web.PageData` (next task).
+  `go build`, `go test ./...`, `golangci-lint run ./...` all pass.
+
+## 2026-09-21 — Task 3: Wire lunch into main.go, PageData, and template
+
+- `cmd/family-dashboard/main.go`: after building the `Collector`, builds a
+  `skolmaten.New(cfg.School.RSSURL,
+  http.DefaultClient)` as `dashboard.LunchSource` if `cfg.School.RSSURL` is set;
+  otherwise logs `slog.Info("no school lunch feed configured")` and leaves it nil. `handleIndex` now takes
+  `lunchSource
+  dashboard.LunchSource` alongside `collector`; when non-nil it calls `lunchSource.Lunch(r.Context())`
+  and on error `slog.Error`-logs and continues with an empty dish list (same log-and-continue as collector source fetch
+  failures), then passes the dish list to `web.NewPageData`. `web/page.go`: added `Lunch []string` field to `PageData`
+  and a `lunch []string` parameter to `NewPageData` (after `owners`, before `now`), assigned straight through with no
+  transformation (no display formatting needed, unlike events/homework/upcoming). Updated all `NewPageData` call sites
+  in `web/page_test.go` (nil for existing cases) and added `TestNewPageData_Lunch`. `web/templates/page.html.tmpl`'s
+  Skollunch section now renders `{{if not .Lunch}}` a muted "Ingen lunchmeny idag." row, else one `<div class="row">`
+  per dish — no owner-initial prefix, since lunch is shared across kids, not per-owner. `go build`, `go test ./...`,
+  `golangci-lint run ./...` all pass. This completes the 3-task plan.md lunch feature; Skolschema remains an untouched
+  static placeholder.

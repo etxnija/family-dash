@@ -1,9 +1,9 @@
 ---
 type: component
-tags: [web, page, template, i18n, funcmap, receipt-design]
-summary: web/page.go PageData/Render — receipt-style monochrome template, Swedish display translations via FuncMap.
-links: [composition-root.md]
-updated: 2026-09-21
+tags: [web, page, template, i18n, funcmap, receipt-design, lunch]
+summary: web/page.go PageData/Render — receipt-style monochrome template, Swedish display translations via FuncMap, data-driven Skollunch panel.
+links: [composition-root.md, skolmaten-adapter.md]
+updated: 2026-09-21 (added Lunch field, wired Skollunch to real data)
 generated: { by: worker, at: 2026-09-21T00:00:00Z }
 ---
 
@@ -55,6 +55,17 @@ HTML output is Swedish.
   description) — it's always `strings.Contains(strings.ToLower(e.Description), "prov")`,
   so a "Läxa " event with "prov" in its description still gets the marker.
   The template renders it as a muted `(Prov)` suffix after `.Summary`.
+
+- "Skollunch" is data-driven like "Kommande dagar": `PageData.Lunch []string`
+  is a plain dish-name list from `dashboard.LunchMenu.Dishes` (see
+  [skolmaten-adapter.md](skolmaten-adapter.md)) passed straight through by
+  `NewPageData`'s new `lunch []string` parameter (positioned after `owners`,
+  before `now`) with no per-row transformation — unlike Events/Homework/
+  Upcoming there's no `buildXRows` helper, since a dish is already a display
+  string. The template renders `{{if not .Lunch}}` a muted "Ingen
+  lunchmeny idag." row (same empty-state convention as other sections),
+  else one `<div class="row">{{.}}</div>` per dish — no owner-initial
+  prefix, since lunch is a single shared feed, not per-kid.
 
 ## Gotchas & Failure Modes
 - Adding a new day-label or date value that doesn't map into `svWeekdays`

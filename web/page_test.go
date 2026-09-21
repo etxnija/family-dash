@@ -88,7 +88,7 @@ func newPageDataTestCases() []pageDataTestCase {
 func TestNewPageData(t *testing.T) {
 	for _, tt := range newPageDataTestCases() {
 		t.Run(tt.name, func(t *testing.T) {
-			data, err := NewPageData(tt.events, nil, nil, []string{"Kaj", "Lillian"}, tt.now)
+			data, err := NewPageData(tt.events, nil, nil, []string{"Kaj", "Lillian"}, nil, tt.now)
 			if err != nil {
 				t.Fatalf("NewPageData() error = %v", err)
 			}
@@ -117,7 +117,7 @@ func TestNewPageData(t *testing.T) {
 func TestNewPageData_WeekNumberAndCurrentTime(t *testing.T) {
 	now := time.Date(2026, 9, 18, 7, 42, 0, 0, time.UTC)
 
-	data, err := NewPageData(nil, nil, nil, []string{"Kaj", "Lillian"}, now)
+	data, err := NewPageData(nil, nil, nil, []string{"Kaj", "Lillian"}, nil, now)
 	if err != nil {
 		t.Fatalf("NewPageData() error = %v", err)
 	}
@@ -237,7 +237,7 @@ func TestNewPageData_Homework(t *testing.T) {
 
 	for _, tt := range newHomeworkTestCases(loc) {
 		t.Run(tt.name, func(t *testing.T) {
-			data, err := NewPageData(nil, tt.homeworkEvents, nil, tt.owners, now)
+			data, err := NewPageData(nil, tt.homeworkEvents, nil, tt.owners, nil, now)
 			if err != nil {
 				t.Fatalf("NewPageData() error = %v", err)
 			}
@@ -308,12 +308,30 @@ func TestNewPageData_Upcoming(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			data, err := NewPageData(nil, nil, tt.upcomingEvents, []string{"Kaj", "Lillian"}, now)
+			data, err := NewPageData(nil, nil, tt.upcomingEvents, []string{"Kaj", "Lillian"}, nil, now)
 			if err != nil {
 				t.Fatalf("NewPageData() error = %v", err)
 			}
 			assertUpcomingRows(t, data.Upcoming, tt.want)
 		})
+	}
+}
+
+func TestNewPageData_Lunch(t *testing.T) {
+	now := time.Date(2026, 9, 18, 7, 42, 0, 0, time.UTC)
+	lunch := []string{"Fiskgratäng med potatis", "Vegetariska tacos"}
+
+	data, err := NewPageData(nil, nil, nil, []string{"Kaj", "Lillian"}, lunch, now)
+	if err != nil {
+		t.Fatalf("NewPageData() error = %v", err)
+	}
+	if len(data.Lunch) != len(lunch) {
+		t.Fatalf("Lunch = %+v, want %+v", data.Lunch, lunch)
+	}
+	for i, want := range lunch {
+		if data.Lunch[i] != want {
+			t.Errorf("Lunch[%d] = %q, want %q", i, data.Lunch[i], want)
+		}
 	}
 }
 

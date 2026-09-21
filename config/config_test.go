@@ -12,12 +12,12 @@ func TestLoadSources(t *testing.T) {
 	t.Run("valid JSON file", func(t *testing.T) {
 		dir := t.TempDir()
 		path := filepath.Join(dir, "sources.json")
-		const body = `[{"name":"alice","type":"sportadmin","url":"https://example.com/a.ics"},{"name":"bob","type":"sportadmin","url":"https://example.com/b.ics"}]`
+		const body = `{"sources":[{"name":"alice","type":"sportadmin","url":"https://example.com/a.ics"},{"name":"bob","type":"sportadmin","url":"https://example.com/b.ics"}],"school":{"name":"Nya Elementar","rssUrl":"https://skolmaten.se/api/4/rss/day/nya-elementar?locale=en"}}`
 		if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
 			t.Fatalf("WriteFile: %v", err)
 		}
 
-		sources, err := config.Load(path)
+		cfg, err := config.Load(path)
 		if err != nil {
 			t.Fatalf("Load(%q) unexpected error: %v", path, err)
 		}
@@ -25,13 +25,17 @@ func TestLoadSources(t *testing.T) {
 			{Name: "alice", Type: "sportadmin", URL: "https://example.com/a.ics"},
 			{Name: "bob", Type: "sportadmin", URL: "https://example.com/b.ics"},
 		}
-		if len(sources) != len(want) {
-			t.Fatalf("Load(%q) = %+v, want %+v", path, sources, want)
+		if len(cfg.Sources) != len(want) {
+			t.Fatalf("Load(%q).Sources = %+v, want %+v", path, cfg.Sources, want)
 		}
 		for i := range want {
-			if sources[i] != want[i] {
-				t.Errorf("sources[%d] = %+v, want %+v", i, sources[i], want[i])
+			if cfg.Sources[i] != want[i] {
+				t.Errorf("cfg.Sources[%d] = %+v, want %+v", i, cfg.Sources[i], want[i])
 			}
+		}
+		wantSchool := config.School{Name: "Nya Elementar", RSSURL: "https://skolmaten.se/api/4/rss/day/nya-elementar?locale=en"}
+		if cfg.School != wantSchool {
+			t.Errorf("cfg.School = %+v, want %+v", cfg.School, wantSchool)
 		}
 	})
 

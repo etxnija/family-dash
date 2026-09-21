@@ -14,18 +14,30 @@ type Source struct {
 	URL  string `json:"url"`
 }
 
+// School describes the school lunch feed configured for the dashboard.
+type School struct {
+	Name   string `json:"name"`
+	RSSURL string `json:"rssUrl"`
+}
+
+// Config is the top-level shape of the sources config file.
+type Config struct {
+	Sources []Source `json:"sources"`
+	School  School   `json:"school"`
+}
+
 // Load reads and parses the sources config file at path. The error
 // never includes the file's contents (source URLs are secrets), only the
 // path and the underlying cause.
-func Load(path string) ([]Source, error) {
+func Load(path string) (Config, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
-		return nil, fmt.Errorf("config: reading %q: %w", path, err)
+		return Config{}, fmt.Errorf("config: reading %q: %w", path, err)
 	}
 
-	var sources []Source
-	if err := json.Unmarshal(data, &sources); err != nil {
-		return nil, fmt.Errorf("config: parsing %q: %w", path, err)
+	var cfg Config
+	if err := json.Unmarshal(data, &cfg); err != nil {
+		return Config{}, fmt.Errorf("config: parsing %q: %w", path, err)
 	}
-	return sources, nil
+	return cfg, nil
 }

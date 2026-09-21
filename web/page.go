@@ -72,6 +72,7 @@ type PageData struct {
 	Owners      []string
 	Homework    []HomeworkGroup
 	Upcoming    []UpcomingRow
+	Lunch       []string
 }
 
 // ownerColors maps a known owner name to its CSS custom-property name.
@@ -90,8 +91,9 @@ func ownerColor(name string) string {
 }
 
 // NewPageData builds a PageData for events, homeworkEvents, upcomingEvents,
-// owners, and now, converting all times to Europe/Stockholm for display.
-func NewPageData(events []dashboard.Event, homeworkEvents []dashboard.Event, upcomingEvents []dashboard.Event, owners []string, now time.Time) (PageData, error) {
+// owners, lunch, and now, converting all times to Europe/Stockholm for
+// display.
+func NewPageData(events []dashboard.Event, homeworkEvents []dashboard.Event, upcomingEvents []dashboard.Event, owners []string, lunch []string, now time.Time) (PageData, error) {
 	loc, err := time.LoadLocation("Europe/Stockholm")
 	if err != nil {
 		return PageData{}, err
@@ -109,6 +111,7 @@ func NewPageData(events []dashboard.Event, homeworkEvents []dashboard.Event, upc
 		Owners:      owners,
 		Homework:    buildHomeworkGroups(homeworkEvents, owners, localNow, loc),
 		Upcoming:    buildUpcomingRows(upcomingEvents, loc),
+		Lunch:       lunch,
 	}, nil
 }
 
