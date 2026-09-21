@@ -278,3 +278,6 @@ Session-to-session progress log. Distinct from AGENTS.md (stable rules).
   from the existing homework/prov check). Added `trainingEvent`/`cupEvent` fixtures and two `TestUpcomingEvents`
   cases ("training event in window is excluded", "cup event in window is included") to `event_test.go`. `go build`,
   `go vet`, `go test ./...` all pass; `gofmt -l` clean on both touched files.
+
+
+**Run metrics:** 6 driver call(s), $1.9861, session d67ba3d3-f85b-4b29-80e8-56c997a201e1
