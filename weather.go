@@ -6,10 +6,11 @@ import (
 )
 
 // WeatherReading is a single point-in-time weather observation, plus
-// today's forecast low, sky condition, and precipitation outlook.
+// today's forecast low, high, sky condition, and precipitation outlook.
 type WeatherReading struct {
 	Temperature           float64
 	LowTemperature        float64
+	HighTemperature       float64
 	Sunny                 bool
 	PrecipitationExpected bool
 }

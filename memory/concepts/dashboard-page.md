@@ -78,10 +78,11 @@ HTML output is Swedish.
   truth as nil-ness, not pointed-to zero-value); it calls
   `temperatureDisplay` (now `func(float64) string` — the nil check was
   dropped since it's only ever invoked inside the `{{if .Weather}}` guard,
-  so the argument is always valid) on `.Weather.Temperature` and
-  `.Weather.LowTemperature`, plus a static `"SMHI"` source label and two
-  more `{{if}}`-branched lines: `{{if .Weather.Sunny}}Sol{{else}}Mulet{{end}}`
-  and `{{if .Weather.PrecipitationExpected}}regn idag{{else}}torrt idag{{end}}`.
+  so the argument is always valid) on `.Weather.Temperature`,
+  `.Weather.LowTemperature`, and `.Weather.HighTemperature`, plus a static
+  `"SMHI"` source label and two more `{{if}}`-branched lines:
+  `{{if .Weather.Sunny}}Sol{{else}}Mulet{{end}}` and
+  `{{if .Weather.PrecipitationExpected}}regn idag{{else}}torrt idag{{end}}`.
   The `{{else}}` branch keeps the original static fallback markup
   (`&mdash;&deg;` / "ingen väderkälla") unchanged.
 

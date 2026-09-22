@@ -277,7 +277,7 @@ func TestNewPageData_Weather(t *testing.T) {
 	now := time.Date(2026, 9, 18, 7, 42, 0, 0, time.UTC)
 
 	t.Run("non-nil weather", func(t *testing.T) {
-		weather := &dashboard.WeatherReading{Temperature: 10.9, LowTemperature: 8.5, Sunny: true, PrecipitationExpected: false}
+		weather := &dashboard.WeatherReading{Temperature: 10.9, LowTemperature: 8.5, HighTemperature: 13.2, Sunny: true, PrecipitationExpected: false}
 		data, err := NewPageData(nil, nil, nil, []string{"Kaj", "Lillian"}, nil, weather, now)
 		if err != nil {
 			t.Fatalf("NewPageData() error = %v", err)
@@ -451,9 +451,9 @@ func TestRender(t *testing.T) {
 				Weekday:   "Friday",
 				DateLabel: "18 September",
 				Owners:    []string{"Kaj", "Lillian"},
-				Weather:   &dashboard.WeatherReading{Temperature: 10.9, LowTemperature: 8.5, Sunny: true},
+				Weather:   &dashboard.WeatherReading{Temperature: 10.9, LowTemperature: 8.5, HighTemperature: 13.2, Sunny: true},
 			},
-			want: []string{"11°", "SMHI", "Sol", "torrt idag"},
+			want: []string{"11°", "SMHI", "Sol", "torrt idag", "H&ouml;gst idag: 13°"},
 		},
 	}
 

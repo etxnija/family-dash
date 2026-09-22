@@ -1,9 +1,9 @@
 ---
 type: component
 tags: [smhi, weather, adapter, hexagonal]
-summary: weather.go's WeatherReading/WeatherSource port and the SMHI point-forecast adapter that fetches+parses today's temperature, low, sky condition, and precipitation.
+summary: weather.go's WeatherReading/WeatherSource port and the SMHI point-forecast adapter that fetches+parses today's temperature, low, high, sky condition, and precipitation.
 links: [skolmaten-adapter.md, composition-root.md, dashboard-page.md]
-updated: 2026-09-22 (PrecipitationExpected now derived from probability_of_precipitation, not pcat)
+updated: 2026-09-22 (added HighTemperature; PrecipitationExpected now derived from accumulated daily precipitation amount, not probability)
 generated: { by: worker, at: 2026-09-22T00:00:00Z }
 verified: [{ by: "human", at: 2026-09-22 }]
 ---
@@ -22,10 +22,10 @@ Swedish meteorological institute), using the same constructor/test pattern
 as `skolmaten`/`webcal`.
 
 ## Key Rules & Mechanics
-- `dashboard.WeatherReading{Temperature, LowTemperature float64; Sunny,
-  PrecipitationExpected bool}` and `dashboard.WeatherSource`
+- `dashboard.WeatherReading{Temperature, LowTemperature, HighTemperature
+  float64; Sunny, PrecipitationExpected bool}` and `dashboard.WeatherSource`
   (`Weather(ctx context.Context, now time.Time) (WeatherReading, error)`)
-  are the port. `now` is needed because "today" (for the low/precipitation
+  are the port. `now` is needed because "today" (for the low/high/precipitation
   fields) is derived from it, not from wall-clock time inside the adapter —
   keeps `parseForecast` pure/testable.
 - `smhi.New(lat, lon float64, client *http.Client) *Client` mirrors
@@ -36,25 +36,30 @@ as `skolmaten`/`webcal`.
   unmarshals the JSON body into a local `forecast{TimeSeries
   []timeSeriesEntry}` shape (`timeSeriesEntry{Time string; Data
   struct{ AirTemperature float64; SymbolCode int
-  `json:"symbol_code"`; ProbabilityOfPrecipitation int
-  `json:"probability_of_precipitation"` }}`).
+  `json:"symbol_code"`; PrecipitationAmount float64
+  `json:"precipitation_amount_mean_deterministic"` }}`).
 - `parseForecast(data, now)`: `Temperature` and `Sunny` come from
   `TimeSeries[0]` only (the soonest forecast point) — `Sunny` is
   `SymbolCode == 1 || SymbolCode == 2` (SMHI's "clear sky"/"nearly clear
-  sky" codes). `LowTemperature` and `PrecipitationExpected` are derived from
-  "today" entries: each entry's `Time` (RFC3339) is parsed and compared, in
-  `Europe/Stockholm` (falling back to UTC if the zone fails to load), to
-  `now`'s local date. `LowTemperature` is the min `AirTemperature` among
-  today entries; `PrecipitationExpected` is true if any today entry's
-  `ProbabilityOfPrecipitation >= precipitationProbabilityThreshold` (a
-  package-level const, `30`). SMHI's `predominant_precipitation_type_at_surface`
-  (pcat) field was tried first but flagged "any" precipitation type as
-  present regardless of likelihood, producing false positives; probability
-  gives a tunable magnitude signal instead. If no entry's local date matches
-  `now`'s (e.g. `now` is near midnight and the forecast's first entries are
-  already "tomorrow"), `LowTemperature` falls back to `TimeSeries[0]`'s
-  temperature and `PrecipitationExpected` stays false — same "no sensible
-  per-day data, use the soonest point" philosophy as the original
+  sky" codes). `LowTemperature`, `HighTemperature`, and
+  `PrecipitationExpected` are derived from "today" entries: each entry's
+  `Time` (RFC3339) is parsed and compared, in `Europe/Stockholm` (falling
+  back to UTC if the zone fails to load), to `now`'s local date.
+  `LowTemperature`/`HighTemperature` are the min/max `AirTemperature` among
+  today entries; `PrecipitationExpected` is true if the accumulated total of
+  today entries' `PrecipitationAmount` (starting from `TimeSeries[0]`'s
+  amount, then summing each today entry in the loop) is
+  `>= dailyPrecipitationThresholdMM` (a package-level const, `0.2` mm for
+  the whole day, not per-entry). SMHI's `probability_of_precipitation` field
+  was tried first but only signals likelihood, not magnitude — a
+  high-probability drizzle and a high-probability downpour looked the same;
+  `precipitation_amount_mean_deterministic` (mean precipitation amount per
+  entry) gives actual amounts that sum to a daily total to threshold on. If
+  no entry's local date matches `now`'s (e.g. `now` is near midnight and the
+  forecast's first entries are already "tomorrow"), `LowTemperature` and
+  `HighTemperature` fall back to `TimeSeries[0]`'s temperature and the
+  precipitation total is just `TimeSeries[0]`'s own amount — same "no
+  sensible per-day data, use the soonest point" philosophy as the original
   first-entry-only logic.
 - An empty `timeSeries` array is still an error (unlike skolmaten's
   empty-feed case) — there's no sensible zero-value reading to fall back

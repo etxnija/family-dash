@@ -23,16 +23,16 @@ type forecast struct {
 type timeSeriesEntry struct {
 	Time string `json:"time"`
 	Data struct {
-		AirTemperature             float64 `json:"air_temperature"`
-		SymbolCode                 int     `json:"symbol_code"`
-		ProbabilityOfPrecipitation int     `json:"probability_of_precipitation"`
+		AirTemperature      float64 `json:"air_temperature"`
+		SymbolCode          int     `json:"symbol_code"`
+		PrecipitationAmount float64 `json:"precipitation_amount_mean_deterministic"`
 	} `json:"data"`
 }
 
-// precipitationProbabilityThreshold is the minimum probability of
-// precipitation (percent) for a today entry to count as "precipitation
+// dailyPrecipitationThresholdMM is the minimum accumulated precipitation
+// (mm) across today's entries for the day to count as "precipitation
 // expected".
-const precipitationProbabilityThreshold = 30
+const dailyPrecipitationThresholdMM = 0.2
 
 // Client fetches the SMHI point forecast for a fixed location.
 type Client struct {
@@ -50,7 +50,7 @@ func New(lat, lon float64, client *http.Client) *Client {
 
 // Weather implements dashboard.WeatherSource by fetching the SMHI point
 // forecast and returning the first (soonest) time series entry's
-// temperature, plus today's low temperature, sky condition, and
+// temperature, plus today's low/high temperature, sky condition, and
 // precipitation outlook.
 func (c *Client) Weather(ctx context.Context, now time.Time) (dashboard.WeatherReading, error) {
 	data, err := c.fetch(ctx)
@@ -89,9 +89,9 @@ func (c *Client) fetch(ctx context.Context) ([]byte, error) {
 // parseForecast parses raw forecast JSON into a dashboard.WeatherReading,
 // using the first time series entry for Temperature and Sunny, and the
 // entries whose local date matches now's local date (in Europe/Stockholm,
-// falling back to UTC if the zone fails to load) for LowTemperature and
-// PrecipitationExpected. An empty timeSeries is an error, since there is no
-// sensible zero-value reading to fall back to.
+// falling back to UTC if the zone fails to load) for LowTemperature,
+// HighTemperature, and PrecipitationExpected. An empty timeSeries is an
+// error, since there is no sensible zero-value reading to fall back to.
 func parseForecast(data []byte, now time.Time) (dashboard.WeatherReading, error) {
 	var f forecast
 	if err := json.Unmarshal(data, &f); err != nil {
@@ -115,6 +115,8 @@ func parseForecast(data []byte, now time.Time) (dashboard.WeatherReading, error)
 	}
 
 	low := first.Data.AirTemperature
+	high := first.Data.AirTemperature
+	precipTotal := first.Data.PrecipitationAmount
 	haveToday := false
 	for _, entry := range f.TimeSeries {
 		entryTime, err := time.Parse(time.RFC3339, entry.Time)
@@ -127,12 +129,15 @@ func parseForecast(data []byte, now time.Time) (dashboard.WeatherReading, error)
 		if !haveToday || entry.Data.AirTemperature < low {
 			low = entry.Data.AirTemperature
 		}
-		if entry.Data.ProbabilityOfPrecipitation >= precipitationProbabilityThreshold {
-			reading.PrecipitationExpected = true
+		if !haveToday || entry.Data.AirTemperature > high {
+			high = entry.Data.AirTemperature
 		}
+		precipTotal += entry.Data.PrecipitationAmount
 		haveToday = true
 	}
 	reading.LowTemperature = low
+	reading.HighTemperature = high
+	reading.PrecipitationExpected = precipTotal >= dailyPrecipitationThresholdMM
 
 	return reading, nil
 }

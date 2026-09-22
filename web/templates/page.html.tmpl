@@ -119,7 +119,7 @@
       {{if .Weather}}
       <div class="temp">{{temperatureDisplay .Weather.Temperature}}</div>
       <div class="source">SMHI</div>
-      <div class="source">L&auml;gst idag: {{temperatureDisplay .Weather.LowTemperature}}</div>
+      <div class="source">L&auml;gst idag: {{temperatureDisplay .Weather.LowTemperature}} &middot; H&ouml;gst idag: {{temperatureDisplay .Weather.HighTemperature}}</div>
       <div class="source">{{if .Weather.Sunny}}Sol{{else}}Mulet{{end}}</div>
       <div class="source">{{if .Weather.PrecipitationExpected}}regn idag{{else}}torrt idag{{end}}</div>
       {{else}}

@@ -23,7 +23,7 @@ const exampleResponse = `{
       "data": {
         "air_temperature": 10.9,
         "symbol_code": 1,
-        "probability_of_precipitation": 3
+        "precipitation_amount_mean_deterministic": 0.0
       }
     },
     {
@@ -33,7 +33,7 @@ const exampleResponse = `{
       "data": {
         "air_temperature": 7.2,
         "symbol_code": 1,
-        "probability_of_precipitation": 50
+        "precipitation_amount_mean_deterministic": 0.4
       }
     },
     {
@@ -43,7 +43,7 @@ const exampleResponse = `{
       "data": {
         "air_temperature": 15.5,
         "symbol_code": 5,
-        "probability_of_precipitation": 0
+        "precipitation_amount_mean_deterministic": 0.0
       }
     }
   ]
@@ -81,59 +81,110 @@ func TestWeather(t *testing.T) {
 		now                       time.Time
 		wantTemp                  float64
 		wantLowTemp               float64
+		wantHighTemp              float64
 		wantSunny                 bool
 		wantPrecipitationExpected bool
 		wantErr                   bool
 	}{
 		{
-			// exampleResponse's 18:00 entry has probability_of_precipitation:
-			// 50, which is >= precipitationProbabilityThreshold (30).
-			name:                      "example response yields first entry's temperature and today's low/precipitation",
+			// exampleResponse's today entries accumulate to 0.4mm, which is
+			// >= dailyPrecipitationThresholdMM (0.2).
+			name:                      "example response yields first entry's temperature and today's low/high/precipitation",
 			statusCode:                http.StatusOK,
 			body:                      exampleResponse,
 			now:                       time.Date(2026, 9, 22, 8, 0, 0, 0, loc),
 			wantTemp:                  10.9,
 			wantLowTemp:               7.2,
+			wantHighTemp:              10.9,
 			wantSunny:                 true,
 			wantPrecipitationExpected: true,
 		},
 		{
-			name:        "not sunny when first entry's symbol_code is 3 or higher",
-			statusCode:  http.StatusOK,
-			body:        `{"timeSeries":[{"time":"2026-09-22T12:00:00Z","data":{"air_temperature":10.9,"symbol_code":5,"probability_of_precipitation":0}}]}`,
-			now:         time.Date(2026, 9, 22, 8, 0, 0, 0, loc),
-			wantTemp:    10.9,
-			wantLowTemp: 10.9,
-			wantSunny:   false,
+			name:         "not sunny when first entry's symbol_code is 3 or higher",
+			statusCode:   http.StatusOK,
+			body:         `{"timeSeries":[{"time":"2026-09-22T12:00:00Z","data":{"air_temperature":10.9,"symbol_code":5,"precipitation_amount_mean_deterministic":0.0}}]}`,
+			now:          time.Date(2026, 9, 22, 8, 0, 0, 0, loc),
+			wantTemp:     10.9,
+			wantLowTemp:  10.9,
+			wantHighTemp: 10.9,
+			wantSunny:    false,
 		},
 		{
-			name:                      "no precipitation when probability below threshold",
+			name:                      "no precipitation when amount below threshold",
 			statusCode:                http.StatusOK,
-			body:                      `{"timeSeries":[{"time":"2026-09-22T12:00:00Z","data":{"air_temperature":10.9,"symbol_code":1,"probability_of_precipitation":3}}]}`,
+			body:                      `{"timeSeries":[{"time":"2026-09-22T12:00:00Z","data":{"air_temperature":10.9,"symbol_code":1,"precipitation_amount_mean_deterministic":0.05}}]}`,
 			now:                       time.Date(2026, 9, 22, 8, 0, 0, 0, loc),
 			wantTemp:                  10.9,
 			wantLowTemp:               10.9,
+			wantHighTemp:              10.9,
 			wantSunny:                 true,
 			wantPrecipitationExpected: false,
 		},
 		{
 			name:                      "precipitation expected at exact threshold boundary",
 			statusCode:                http.StatusOK,
-			body:                      `{"timeSeries":[{"time":"2026-09-22T12:00:00Z","data":{"air_temperature":10.9,"symbol_code":1,"probability_of_precipitation":30}}]}`,
+			body:                      `{"timeSeries":[{"time":"2026-09-22T12:00:00Z","data":{"air_temperature":10.9,"symbol_code":1,"precipitation_amount_mean_deterministic":0.1}}]}`,
 			now:                       time.Date(2026, 9, 22, 8, 0, 0, 0, loc),
 			wantTemp:                  10.9,
 			wantLowTemp:               10.9,
+			wantHighTemp:              10.9,
 			wantSunny:                 true,
 			wantPrecipitationExpected: true,
 		},
 		{
-			name:        "near-midnight now with no matching today entries falls back to first entry's temperature",
-			statusCode:  http.StatusOK,
-			body:        exampleResponse,
-			now:         time.Date(2026, 9, 30, 0, 30, 0, 0, loc),
-			wantTemp:    10.9,
-			wantLowTemp: 10.9,
-			wantSunny:   true,
+			name:         "high temperature is max of today's entries",
+			statusCode:   http.StatusOK,
+			body:         exampleResponse,
+			now:          time.Date(2026, 9, 23, 8, 0, 0, 0, loc),
+			wantTemp:     10.9,
+			wantLowTemp:  15.5,
+			wantHighTemp: 15.5,
+			wantSunny:    true,
+		},
+		{
+			name:         "near-midnight now with no matching today entries falls back to first entry's temperature",
+			statusCode:   http.StatusOK,
+			body:         exampleResponse,
+			now:          time.Date(2026, 9, 30, 0, 30, 0, 0, loc),
+			wantTemp:     10.9,
+			wantLowTemp:  10.9,
+			wantHighTemp: 10.9,
+			wantSunny:    true,
+		},
+		{
+			name:                      "all hours dry stays torrt",
+			statusCode:                http.StatusOK,
+			body:                      `{"timeSeries":[{"time":"2026-09-22T06:00:00Z","data":{"air_temperature":10.0,"symbol_code":1,"precipitation_amount_mean_deterministic":0.0}},{"time":"2026-09-22T18:00:00Z","data":{"air_temperature":8.0,"symbol_code":1,"precipitation_amount_mean_deterministic":0.0}}]}`,
+			now:                       time.Date(2026, 9, 22, 8, 0, 0, 0, loc),
+			wantTemp:                  10.0,
+			wantLowTemp:               8.0,
+			wantHighTemp:              10.0,
+			wantSunny:                 true,
+			wantPrecipitationExpected: false,
+		},
+		{
+			// No single entry reaches the old per-entry threshold (0.1), but
+			// the accumulated total (0.25mm) crosses dailyPrecipitationThresholdMM.
+			name:                      "sum crossing threshold triggers regn",
+			statusCode:                http.StatusOK,
+			body:                      `{"timeSeries":[{"time":"2026-09-22T00:00:00Z","data":{"air_temperature":5.0,"symbol_code":1,"precipitation_amount_mean_deterministic":0.05}},{"time":"2026-09-22T06:00:00Z","data":{"air_temperature":6.0,"symbol_code":1,"precipitation_amount_mean_deterministic":0.05}},{"time":"2026-09-22T12:00:00Z","data":{"air_temperature":7.0,"symbol_code":1,"precipitation_amount_mean_deterministic":0.05}},{"time":"2026-09-22T18:00:00Z","data":{"air_temperature":8.0,"symbol_code":1,"precipitation_amount_mean_deterministic":0.05}}]}`,
+			now:                       time.Date(2026, 9, 22, 8, 0, 0, 0, loc),
+			wantTemp:                  5.0,
+			wantLowTemp:               5.0,
+			wantHighTemp:              8.0,
+			wantSunny:                 true,
+			wantPrecipitationExpected: true,
+		},
+		{
+			name:                      "sum just below threshold stays torrt",
+			statusCode:                http.StatusOK,
+			body:                      `{"timeSeries":[{"time":"2026-09-22T12:00:00Z","data":{"air_temperature":10.9,"symbol_code":1,"precipitation_amount_mean_deterministic":0.095}}]}`,
+			now:                       time.Date(2026, 9, 22, 8, 0, 0, 0, loc),
+			wantTemp:                  10.9,
+			wantLowTemp:               10.9,
+			wantHighTemp:              10.9,
+			wantSunny:                 true,
+			wantPrecipitationExpected: false,
 		},
 		{
 			name:       "empty time series yields error",
@@ -178,6 +229,9 @@ func TestWeather(t *testing.T) {
 			}
 			if got.LowTemperature != tt.wantLowTemp {
 				t.Errorf("Weather().LowTemperature = %v, want %v", got.LowTemperature, tt.wantLowTemp)
+			}
+			if got.HighTemperature != tt.wantHighTemp {
+				t.Errorf("Weather().HighTemperature = %v, want %v", got.HighTemperature, tt.wantHighTemp)
 			}
 			if got.Sunny != tt.wantSunny {
 				t.Errorf("Weather().Sunny = %v, want %v", got.Sunny, tt.wantSunny)
