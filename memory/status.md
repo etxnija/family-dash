@@ -314,3 +314,7 @@ Session-to-session progress log. Distinct from AGENTS.md (stable rules).
   idag." row, else one `<div class="row">` per dish — no owner-initial prefix, since lunch is shared across kids,
   not per-owner. `go build`, `go test ./...`, `golangci-lint run ./...` all pass. This completes the 3-task
   plan.md lunch feature; Skolschema remains an untouched static placeholder.
+- Removed the static Skolschema section (heading, placeholder note, two hardcoded schedule rows, flanking `<hr>`)
+  and its now-unused `.placeholder-note` CSS from `web/templates/page.html.tmpl`; updated
+  `memory/concepts/dashboard-page.md` to drop the stale "Skolschema/Skollunch remain static placeholders" note.
+  `go build` and `go test ./...` pass.

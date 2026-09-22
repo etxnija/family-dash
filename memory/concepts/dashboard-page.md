@@ -5,6 +5,7 @@ summary: web/page.go PageData/Render — receipt-style monochrome template, Swed
 links: [composition-root.md, skolmaten-adapter.md]
 updated: 2026-09-21 (added Lunch field, wired Skollunch to real data)
 generated: { by: worker, at: 2026-09-21T00:00:00Z }
+verified: [{ by: "human", at: 2026-09-22 }]
 ---
 
 # Dashboard Page (`web/page.go` + `web/templates/page.html.tmpl`)
@@ -48,8 +49,7 @@ HTML output is Swedish.
 - The `dict` FuncMap helper and `{{define "comingUpCard"}}` sub-template
   were removed together: `dict` existed only to pass named args into that
   sub-template. "Kommande dagar" started as static placeholder markup (like
-  Skolschema/Skollunch) but was later wired to `dashboard.UpcomingEvents`
-  (see above) — Skolschema/Skollunch remain static placeholders.
+  Skollunch) but was later wired to `dashboard.UpcomingEvents` (see above).
 - `HomeworkRow.IsProv` is computed independently of which branch of
   `dashboard.HomeworkEvents`'s filter matched (summary prefix vs.
   description) — it's always `strings.Contains(strings.ToLower(e.Description), "prov")`,
