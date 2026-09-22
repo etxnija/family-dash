@@ -380,3 +380,23 @@ Session-to-session progress log. Distinct from AGENTS.md (stable rules).
   expects `true`). `go build`, `go vet`, `gofmt -l .`, sensors/test.sh, sensors/lint.sh all pass.
 
 **Run metrics:** 9 driver call(s), $4.0144, session 1d998199-90dd-4791-ab20-ea6bd315e5f3
+
+## 2026-09-22 — Add HighTemperature and daily precipitation total
+
+- `weather.go`: added `HighTemperature float64` to `WeatherReading`, between `LowTemperature` and `Sunny`.
+  `smhi/smhi.go`: `timeSeriesEntry.Data.ProbabilityOfPrecipitation int` replaced with `PrecipitationAmount float64`
+  (`precipitation_amount_mean_deterministic`); `precipitationProbabilityThreshold` (30) replaced with
+  `dailyPrecipitationThresholdMM = 0.2`. `parseForecast` now seeds `high`/`precipTotal` alongside `low` from the
+  first entry, tracks `high` as the max today `AirTemperature` (mirroring `low`'s min), and sums each today entry's
+  `PrecipitationAmount` into `precipTotal` (resetting on the first matching entry so the pre-loop seed isn't
+  double-counted, same "seed as near-midnight fallback" trick as `low`/`high`); `PrecipitationExpected` is now
+  `precipTotal >= dailyPrecipitationThresholdMM`. `smhi/smhi_test.go`: added `precipitation_amount_mean_deterministic`
+  to `exampleResponse`'s entries and `wantHighTemp`/`HighTemperature` assertions; replaced the probability-boundary
+  cases with amount-based ones ("all hours dry stays torrt", "sum crossing threshold triggers regn", "sum just below
+  threshold stays torrat"). `web/templates/page.html.tmpl`: "Lägst idag" line now also shows "Högst idag" on the same
+  row (middot separator). `web/page_test.go`: added `HighTemperature` to the weather fixtures and a
+  `"H&ouml;gst idag"` (HTML-entity, matching the template's literal markup) assertion to `TestRender`. Updated
+  `smhi-adapter.md` and `dashboard-page.md`. `go build`, `go vet`, `gofmt -l .`, `go test ./...` all pass.
+
+
+**Run metrics:** 7 driver call(s), $4.9311, session 7d075ba2-a631-409d-9ddd-c317b83930b7
