@@ -344,3 +344,25 @@ Session-to-session progress log. Distinct from AGENTS.md (stable rules).
 
 
 **Run metrics:** 4 driver call(s), $3.6079, session 1fc760cf-d518-441b-93cd-27c99733e1ac
+
+## 2026-09-22 — Task: Extend weather end-to-end (low, sky, precipitation)
+
+- `weather.go`: added `LowTemperature float64`, `Sunny bool`, `PrecipitationExpected bool` to `WeatherReading`;
+  `WeatherSource.Weather` now takes a `now time.Time` param. `smhi/smhi.go`: added `SymbolCode`/`PrecipitationType`
+  JSON fields to `timeSeriesEntry.Data`; `parseForecast(data, now)` parses each entry's RFC3339 `Time`, buckets
+  entries whose Europe/Stockholm (UTC fallback) local date matches `now`'s into "today", and computes `Sunny` from
+  the first entry's `SymbolCode` (1 or 2), `LowTemperature` as the min today `AirTemperature` (falls back to the
+  first entry's temperature if no today entries match — e.g. `now` near midnight), and `PrecipitationExpected` from
+  any today entry's `PrecipitationType != 0`. `smhi/smhi_test.go` expanded with distinct per-entry temperatures,
+  symbol codes, and precipitation types, plus sunny/not-sunny, precipitation/no-precipitation, and near-midnight
+  fallback cases. `cmd/family-dashboard/main.go` now passes `time.Now()` to `Weather` and threads a
+  `*dashboard.WeatherReading` (not `*float64`) into `web.NewPageData`. `web/page.go`: `PageData.Temperature` →
+  `PageData.Weather *dashboard.WeatherReading`; `NewPageData`'s `temperature` param → `weather`; `temperatureDisplay`
+  dropped its nil-pointer branch (now `func(float64) string`, only called inside `{{if .Weather}}`).
+  `web/templates/page.html.tmpl`'s weather block now branches on `{{if .Weather}}` and renders three extra lines
+  (low temp, Sol/Mulet, regn/torrt idag) alongside the existing temperature/SMHI lines. Updated all `web/page_test.go`
+  call sites and `TestNewPageData_Weather`/`TestRender`. Updated `smhi-adapter.md` and `dashboard-page.md`.
+  `go build`, `go vet`, `gofmt -l .`, `go test ./... -race` all pass.
+
+
+**Run metrics:** 7 driver call(s), $2.7488, session 5097678a-1e12-4cc6-a3f1-95095dec444b
