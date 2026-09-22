@@ -4,6 +4,7 @@ package web
 
 import (
 	"embed"
+	"fmt"
 	"html/template"
 	"io"
 	"math"
@@ -18,13 +19,14 @@ import (
 var templateFS embed.FS
 
 var pageTemplate = template.Must(template.New("").Funcs(template.FuncMap{
-	"ownerColor":      ownerColor,
-	"svWeekday":       svWeekday,
-	"svDateLabel":     svDateLabel,
-	"svDayLabel":      svDayLabel,
-	"svTime":          svTime,
-	"ownerInitial":    ownerInitial,
-	"svWeekdayAbbrev": svWeekdayAbbrev,
+	"ownerColor":         ownerColor,
+	"svWeekday":          svWeekday,
+	"svDateLabel":        svDateLabel,
+	"svDayLabel":         svDayLabel,
+	"svTime":             svTime,
+	"ownerInitial":       ownerInitial,
+	"svWeekdayAbbrev":    svWeekdayAbbrev,
+	"temperatureDisplay": temperatureDisplay,
 }).ParseFS(templateFS, "templates/page.html.tmpl"))
 
 // EventRow is the flattened, display-ready view of a dashboard.Event.
@@ -73,6 +75,7 @@ type PageData struct {
 	Homework    []HomeworkGroup
 	Upcoming    []UpcomingRow
 	Lunch       []string
+	Temperature *float64
 }
 
 // ownerColors maps a known owner name to its CSS custom-property name.
@@ -91,9 +94,9 @@ func ownerColor(name string) string {
 }
 
 // NewPageData builds a PageData for events, homeworkEvents, upcomingEvents,
-// owners, lunch, and now, converting all times to Europe/Stockholm for
-// display.
-func NewPageData(events []dashboard.Event, homeworkEvents []dashboard.Event, upcomingEvents []dashboard.Event, owners []string, lunch []string, now time.Time) (PageData, error) {
+// owners, lunch, temperature, and now, converting all times to
+// Europe/Stockholm for display.
+func NewPageData(events []dashboard.Event, homeworkEvents []dashboard.Event, upcomingEvents []dashboard.Event, owners []string, lunch []string, temperature *float64, now time.Time) (PageData, error) {
 	loc, err := time.LoadLocation("Europe/Stockholm")
 	if err != nil {
 		return PageData{}, err
@@ -112,6 +115,7 @@ func NewPageData(events []dashboard.Event, homeworkEvents []dashboard.Event, upc
 		Homework:    buildHomeworkGroups(homeworkEvents, owners, localNow, loc),
 		Upcoming:    buildUpcomingRows(upcomingEvents, loc),
 		Lunch:       lunch,
+		Temperature: temperature,
 	}, nil
 }
 
@@ -329,6 +333,15 @@ func ownerInitial(s string) string {
 		return strings.ToUpper(string(r))
 	}
 	return ""
+}
+
+// temperatureDisplay formats temperature as a rounded whole-degree string
+// (e.g. "11°"), or the no-data fallback "—°" if temperature is nil.
+func temperatureDisplay(temperature *float64) string {
+	if temperature == nil {
+		return "—°"
+	}
+	return fmt.Sprintf("%d°", int(math.Round(*temperature)))
 }
 
 // Render executes the page template for data into w.

@@ -12,7 +12,7 @@ func TestLoadSources(t *testing.T) {
 	t.Run("valid JSON file", func(t *testing.T) {
 		dir := t.TempDir()
 		path := filepath.Join(dir, "sources.json")
-		const body = `{"sources":[{"name":"alice","type":"sportadmin","url":"https://example.com/a.ics"},{"name":"bob","type":"sportadmin","url":"https://example.com/b.ics"}],"school":{"name":"Nya Elementar","rssUrl":"https://skolmaten.se/api/4/rss/day/nya-elementar?locale=en"}}`
+		const body = `{"sources":[{"name":"alice","type":"sportadmin","url":"https://example.com/a.ics"},{"name":"bob","type":"sportadmin","url":"https://example.com/b.ics"}],"school":{"name":"Nya Elementar","rssUrl":"https://skolmaten.se/api/4/rss/day/nya-elementar?locale=en"},"location":{"lat":59.33,"lon":18.07}}`
 		if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
 			t.Fatalf("WriteFile: %v", err)
 		}
@@ -36,6 +36,10 @@ func TestLoadSources(t *testing.T) {
 		wantSchool := config.School{Name: "Nya Elementar", RSSURL: "https://skolmaten.se/api/4/rss/day/nya-elementar?locale=en"}
 		if cfg.School != wantSchool {
 			t.Errorf("cfg.School = %+v, want %+v", cfg.School, wantSchool)
+		}
+		wantLocation := config.Location{Lat: 59.33, Lon: 18.07}
+		if cfg.Location != wantLocation {
+			t.Errorf("cfg.Location = %+v, want %+v", cfg.Location, wantLocation)
 		}
 	})
 

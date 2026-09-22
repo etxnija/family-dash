@@ -10,9 +10,9 @@ import (
 )
 
 type pageDataTestCase struct {
-	name          string
-	events        []dashboard.Event
-	now           time.Time
+	name            string
+	events          []dashboard.Event
+	now             time.Time
 	wantTime        string
 	wantTimeRange   string
 	wantWeekday     string
@@ -21,61 +21,39 @@ type pageDataTestCase struct {
 }
 
 func newPageDataTestCases() []pageDataTestCase {
+	at := func(hour, min int) time.Time { return time.Date(2026, 9, 18, hour, min, 0, 0, time.UTC) }
 	return []pageDataTestCase{
 		{
-			name: "event with end time",
-			events: []dashboard.Event{
-				{
-					Summary: "Football practice",
-					Start:   time.Date(2026, 9, 18, 15, 0, 0, 0, time.UTC),
-					End:     time.Date(2026, 9, 18, 16, 30, 0, 0, time.UTC),
-				},
-			},
-			now:           time.Date(2026, 9, 18, 12, 0, 0, 0, time.UTC),
+			name:          "event with end time",
+			events:        []dashboard.Event{{Summary: "Football practice", Start: at(15, 0), End: at(16, 30)}},
+			now:           at(12, 0),
 			wantTime:      "17:00",
 			wantTimeRange: "17:00–18:30",
 			wantWeekday:   "Friday",
 			wantDateLabel: "18 September",
 		},
 		{
-			name: "event with zero end time",
-			events: []dashboard.Event{
-				{
-					Summary: "Dentist",
-					Start:   time.Date(2026, 9, 18, 8, 0, 0, 0, time.UTC),
-				},
-			},
-			now:           time.Date(2026, 9, 18, 6, 0, 0, 0, time.UTC),
+			name:          "event with zero end time",
+			events:        []dashboard.Event{{Summary: "Dentist", Start: at(8, 0)}},
+			now:           at(6, 0),
 			wantTime:      "10:00",
 			wantTimeRange: "10:00",
 			wantWeekday:   "Friday",
 			wantDateLabel: "18 September",
 		},
 		{
-			name: "all-day event",
-			events: []dashboard.Event{
-				{
-					Summary: "Helgcup",
-					AllDay:  true,
-					Start:   time.Date(2026, 9, 18, 0, 0, 0, 0, time.UTC),
-				},
-			},
-			now:           time.Date(2026, 9, 18, 6, 0, 0, 0, time.UTC),
+			name:          "all-day event",
+			events:        []dashboard.Event{{Summary: "Helgcup", AllDay: true, Start: at(0, 0)}},
+			now:           at(6, 0),
 			wantTime:      "All day",
 			wantTimeRange: "All day",
 			wantWeekday:   "Friday",
 			wantDateLabel: "18 September",
 		},
 		{
-			name: "event with description",
-			events: []dashboard.Event{
-				{
-					Summary:     "Dentist",
-					Description: "Bring insurance card",
-					Start:       time.Date(2026, 9, 18, 8, 0, 0, 0, time.UTC),
-				},
-			},
-			now:             time.Date(2026, 9, 18, 6, 0, 0, 0, time.UTC),
+			name:            "event with description",
+			events:          []dashboard.Event{{Summary: "Dentist", Description: "Bring insurance card", Start: at(8, 0)}},
+			now:             at(6, 0),
 			wantTime:        "10:00",
 			wantTimeRange:   "10:00",
 			wantWeekday:     "Friday",
@@ -88,7 +66,7 @@ func newPageDataTestCases() []pageDataTestCase {
 func TestNewPageData(t *testing.T) {
 	for _, tt := range newPageDataTestCases() {
 		t.Run(tt.name, func(t *testing.T) {
-			data, err := NewPageData(tt.events, nil, nil, []string{"Kaj", "Lillian"}, nil, tt.now)
+			data, err := NewPageData(tt.events, nil, nil, []string{"Kaj", "Lillian"}, nil, nil, tt.now)
 			if err != nil {
 				t.Fatalf("NewPageData() error = %v", err)
 			}
@@ -117,7 +95,7 @@ func TestNewPageData(t *testing.T) {
 func TestNewPageData_WeekNumberAndCurrentTime(t *testing.T) {
 	now := time.Date(2026, 9, 18, 7, 42, 0, 0, time.UTC)
 
-	data, err := NewPageData(nil, nil, nil, []string{"Kaj", "Lillian"}, nil, now)
+	data, err := NewPageData(nil, nil, nil, []string{"Kaj", "Lillian"}, nil, nil, now)
 	if err != nil {
 		t.Fatalf("NewPageData() error = %v", err)
 	}
@@ -163,56 +141,16 @@ func newHomeworkTestCases(loc *time.Location) []homeworkTestCase {
 		start := time.Date(2026, 9, 17+dayOffset, 9, 0, 0, 0, loc)
 		return dashboard.Event{Owner: owner, Summary: summary, Description: description, Start: start}
 	}
+	singleGroup := func(owner, summary, dayLabel string, isToday, isProv bool) []HomeworkGroup {
+		return []HomeworkGroup{{Owner: owner, Items: []HomeworkRow{{Summary: summary, DayLabel: dayLabel, IsToday: isToday, IsProv: isProv}}}}
+	}
 
 	return []homeworkTestCase{
-		{
-			name:           "day label is Due today for an event starting today",
-			homeworkEvents: []dashboard.Event{homeworkEvent("Kaj", "Math worksheet", "", 0)},
-			owners:         []string{"Kaj"},
-			wantGroups: []HomeworkGroup{
-				{Owner: "Kaj", Items: []HomeworkRow{{Summary: "Math worksheet", DayLabel: "Due today", IsToday: true, IsProv: false}}},
-			},
-		},
-		{
-			name:           "day label is Due tomorrow for an event starting tomorrow",
-			homeworkEvents: []dashboard.Event{homeworkEvent("Kaj", "Read ch. 4", "", 1)},
-			owners:         []string{"Kaj"},
-			wantGroups: []HomeworkGroup{
-				{Owner: "Kaj", Items: []HomeworkRow{{Summary: "Read ch. 4", DayLabel: "Due tomorrow", IsToday: false, IsProv: false}}},
-			},
-		},
-		{
-			name:           "day label is the weekday name for day+2 through day+6",
-			homeworkEvents: []dashboard.Event{homeworkEvent("Kaj", "Spelling words", "", 6)},
-			owners:         []string{"Kaj"},
-			wantGroups: []HomeworkGroup{
-				{Owner: "Kaj", Items: []HomeworkRow{{Summary: "Spelling words", DayLabel: "Wednesday", IsToday: false, IsProv: false}}},
-			},
-		},
-		{
-			name:           "prov event has IsProv true",
-			homeworkEvents: []dashboard.Event{homeworkEvent("Kaj", "Matteprov", "Prov i matematik", 0)},
-			owners:         []string{"Kaj"},
-			wantGroups: []HomeworkGroup{
-				{Owner: "Kaj", Items: []HomeworkRow{{Summary: "Matteprov", DayLabel: "Due today", IsToday: true, IsProv: true}}},
-			},
-		},
-		{
-			name:           "regular homework has IsProv false",
-			homeworkEvents: []dashboard.Event{homeworkEvent("Kaj", "Math worksheet", "", 0)},
-			owners:         []string{"Kaj"},
-			wantGroups: []HomeworkGroup{
-				{Owner: "Kaj", Items: []HomeworkRow{{Summary: "Math worksheet", DayLabel: "Due today", IsToday: true, IsProv: false}}},
-			},
-		},
-		{
-			name:           "owners with no homework events produce no group entry",
-			homeworkEvents: []dashboard.Event{homeworkEvent("Kaj", "Math worksheet", "", 0)},
-			owners:         []string{"Kaj", "Lillian"},
-			wantGroups: []HomeworkGroup{
-				{Owner: "Kaj", Items: []HomeworkRow{{Summary: "Math worksheet", DayLabel: "Due today", IsToday: true, IsProv: false}}},
-			},
-		},
+		{name: "day label is Due today for an event starting today", homeworkEvents: []dashboard.Event{homeworkEvent("Kaj", "Math worksheet", "", 0)}, owners: []string{"Kaj"}, wantGroups: singleGroup("Kaj", "Math worksheet", "Due today", true, false)},
+		{name: "day label is Due tomorrow for an event starting tomorrow", homeworkEvents: []dashboard.Event{homeworkEvent("Kaj", "Read ch. 4", "", 1)}, owners: []string{"Kaj"}, wantGroups: singleGroup("Kaj", "Read ch. 4", "Due tomorrow", false, false)},
+		{name: "day label is the weekday name for day+2 through day+6", homeworkEvents: []dashboard.Event{homeworkEvent("Kaj", "Spelling words", "", 6)}, owners: []string{"Kaj"}, wantGroups: singleGroup("Kaj", "Spelling words", "Wednesday", false, false)},
+		{name: "prov event has IsProv true", homeworkEvents: []dashboard.Event{homeworkEvent("Kaj", "Matteprov", "Prov i matematik", 0)}, owners: []string{"Kaj"}, wantGroups: singleGroup("Kaj", "Matteprov", "Due today", true, true)},
+		{name: "owners with no homework events produce no group entry", homeworkEvents: []dashboard.Event{homeworkEvent("Kaj", "Math worksheet", "", 0)}, owners: []string{"Kaj", "Lillian"}, wantGroups: singleGroup("Kaj", "Math worksheet", "Due today", true, false)},
 		{
 			name: "grouping respects the owners slice order",
 			homeworkEvents: []dashboard.Event{
@@ -237,7 +175,7 @@ func TestNewPageData_Homework(t *testing.T) {
 
 	for _, tt := range newHomeworkTestCases(loc) {
 		t.Run(tt.name, func(t *testing.T) {
-			data, err := NewPageData(nil, tt.homeworkEvents, nil, tt.owners, nil, now)
+			data, err := NewPageData(nil, tt.homeworkEvents, nil, tt.owners, nil, nil, now)
 			if err != nil {
 				t.Fatalf("NewPageData() error = %v", err)
 			}
@@ -308,7 +246,7 @@ func TestNewPageData_Upcoming(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			data, err := NewPageData(nil, nil, tt.upcomingEvents, []string{"Kaj", "Lillian"}, nil, now)
+			data, err := NewPageData(nil, nil, tt.upcomingEvents, []string{"Kaj", "Lillian"}, nil, nil, now)
 			if err != nil {
 				t.Fatalf("NewPageData() error = %v", err)
 			}
@@ -321,7 +259,7 @@ func TestNewPageData_Lunch(t *testing.T) {
 	now := time.Date(2026, 9, 18, 7, 42, 0, 0, time.UTC)
 	lunch := []string{"Fiskgratäng med potatis", "Vegetariska tacos"}
 
-	data, err := NewPageData(nil, nil, nil, []string{"Kaj", "Lillian"}, lunch, now)
+	data, err := NewPageData(nil, nil, nil, []string{"Kaj", "Lillian"}, lunch, nil, now)
 	if err != nil {
 		t.Fatalf("NewPageData() error = %v", err)
 	}
@@ -333,6 +271,34 @@ func TestNewPageData_Lunch(t *testing.T) {
 			t.Errorf("Lunch[%d] = %q, want %q", i, data.Lunch[i], want)
 		}
 	}
+}
+
+func TestNewPageData_Weather(t *testing.T) {
+	now := time.Date(2026, 9, 18, 7, 42, 0, 0, time.UTC)
+
+	t.Run("non-nil temperature", func(t *testing.T) {
+		temp := 10.9
+		data, err := NewPageData(nil, nil, nil, []string{"Kaj", "Lillian"}, nil, &temp, now)
+		if err != nil {
+			t.Fatalf("NewPageData() error = %v", err)
+		}
+		if data.Temperature == nil {
+			t.Fatal("Temperature = nil, want non-nil")
+		}
+		if *data.Temperature != temp {
+			t.Errorf("*Temperature = %v, want %v", *data.Temperature, temp)
+		}
+	})
+
+	t.Run("nil temperature", func(t *testing.T) {
+		data, err := NewPageData(nil, nil, nil, []string{"Kaj", "Lillian"}, nil, nil, now)
+		if err != nil {
+			t.Fatalf("NewPageData() error = %v", err)
+		}
+		if data.Temperature != nil {
+			t.Errorf("Temperature = %v, want nil", data.Temperature)
+		}
+	})
 }
 
 func TestSvWeekday(t *testing.T) {
@@ -478,6 +444,16 @@ func TestRender(t *testing.T) {
 				Owners:    []string{"Kaj", "Lillian"},
 			},
 			want: []string{"Inget planerat idag."},
+		},
+		{
+			name: "weather with temperature",
+			data: PageData{
+				Weekday:     "Friday",
+				DateLabel:   "18 September",
+				Owners:      []string{"Kaj", "Lillian"},
+				Temperature: func() *float64 { t := 10.9; return &t }(),
+			},
+			want: []string{"11°", "SMHI"},
 		},
 	}
 

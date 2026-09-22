@@ -3,5 +3,6 @@
     { "name": "Kaj", "type": "sportadmin", "url": "https://portalweb.sportadmin.se/webcal?id=REPLACE_ME" },
     { "name": "Kaj", "type": "infomentor", "url": "https://infomentor.example.com/webcal?id=REPLACE_ME" }
   ],
-  "school": { "name": "Nya Elementar", "rssUrl": "https://skolmaten.se/api/4/rss/day/nya-elementar?locale=en" }
+  "school": { "name": "Nya Elementar", "rssUrl": "https://skolmaten.se/api/4/rss/day/nya-elementar?locale=en" },
+  "location": { "lat": 59.33, "lon": 18.07 }
 }

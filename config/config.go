@@ -20,10 +20,18 @@ type School struct {
 	RSSURL string `json:"rssUrl"`
 }
 
+// Location is the latitude/longitude used to fetch the local weather
+// forecast.
+type Location struct {
+	Lat float64 `json:"lat"`
+	Lon float64 `json:"lon"`
+}
+
 // Config is the top-level shape of the sources config file.
 type Config struct {
-	Sources []Source `json:"sources"`
-	School  School   `json:"school"`
+	Sources  []Source `json:"sources"`
+	School   School   `json:"school"`
+	Location Location `json:"location"`
 }
 
 // Load reads and parses the sources config file at path. The error

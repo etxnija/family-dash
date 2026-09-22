@@ -116,8 +116,13 @@
   <div class="clock-weather">
     <div class="clock">{{.CurrentTime}}</div>
     <div class="weather">
+      {{if .Temperature}}
+      <div class="temp">{{temperatureDisplay .Temperature}}</div>
+      <div class="source">SMHI</div>
+      {{else}}
       <div class="temp">&mdash;&deg;</div>
       <div class="source">ingen v&auml;derk&auml;lla</div>
+      {{end}}
     </div>
   </div>
 

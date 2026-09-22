@@ -14,6 +14,7 @@ import (
 	dashboard "family-dashboard"
 	"family-dashboard/config"
 	"family-dashboard/skolmaten"
+	"family-dashboard/smhi"
 	"family-dashboard/web"
 	"family-dashboard/webcal"
 )
@@ -53,7 +54,14 @@ func main() {
 		lunchSource = skolmaten.New(cfg.School.RSSURL, http.DefaultClient)
 	}
 
-	http.HandleFunc("/", handleIndex(collector, lunchSource))
+	var weatherSource dashboard.WeatherSource
+	if cfg.Location.Lat == 0 && cfg.Location.Lon == 0 {
+		slog.Info("no weather location configured")
+	} else {
+		weatherSource = smhi.New(cfg.Location.Lat, cfg.Location.Lon, http.DefaultClient)
+	}
+
+	http.HandleFunc("/", handleIndex(collector, lunchSource, weatherSource))
 
 	slog.Info("starting server", "addr", *addr)
 	if err := http.ListenAndServe(*addr, nil); err != nil {
@@ -62,10 +70,11 @@ func main() {
 	}
 }
 
-// handleIndex returns an http.HandlerFunc that fetches events via collector
-// and the lunch menu via lunchSource on every request and renders the HTML
-// dashboard. lunchSource may be nil if no school lunch feed is configured.
-func handleIndex(collector *dashboard.Collector, lunchSource dashboard.LunchSource) http.HandlerFunc {
+// handleIndex returns an http.HandlerFunc that fetches events via collector,
+// the lunch menu via lunchSource, and the weather via weatherSource on every
+// request and renders the HTML dashboard. lunchSource and weatherSource may
+// be nil if no school lunch feed or weather location is configured.
+func handleIndex(collector *dashboard.Collector, lunchSource dashboard.LunchSource, weatherSource dashboard.WeatherSource) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		today, homework, upcoming := collector.Collect(r.Context(), time.Now())
 
@@ -79,7 +88,17 @@ func handleIndex(collector *dashboard.Collector, lunchSource dashboard.LunchSour
 			}
 		}
 
-		data, err := web.NewPageData(today, homework, upcoming, collector.Owners(), dishes, time.Now())
+		var temperature *float64
+		if weatherSource != nil {
+			reading, err := weatherSource.Weather(r.Context())
+			if err != nil {
+				slog.Error("fetching weather", "error", err)
+			} else {
+				temperature = &reading.Temperature
+			}
+		}
+
+		data, err := web.NewPageData(today, homework, upcoming, collector.Owners(), dishes, temperature, time.Now())
 		if err != nil {
 			slog.Error("building page data", "error", err)
 			http.Error(w, "internal error", http.StatusInternalServerError)

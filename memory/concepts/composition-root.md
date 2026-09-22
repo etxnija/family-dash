@@ -1,11 +1,11 @@
 ---
 type: component
-tags: [main, config, composition-root, multi-source, cmd, http, lunch]
-summary: cmd/family-dashboard main() — JSON sources+school config, adapter construction at startup, dashboard.Collector and LunchSource wiring, per-request Collect/Lunch/render.
-links: [docs/arch/adr/0001-config-path-via-required-flag.md, webcal-adapter.md, collector.md, skolmaten-adapter.md]
-updated: 2026-09-21 (wired skolmaten.LunchSource into handleIndex)
+tags: [main, config, composition-root, multi-source, cmd, http, lunch, weather]
+summary: cmd/family-dashboard main() — JSON sources+school+location config, adapter construction at startup, dashboard.Collector/LunchSource/WeatherSource wiring, per-request Collect/Lunch/Weather/render.
+links: [docs/arch/adr/0001-config-path-via-required-flag.md, webcal-adapter.md, collector.md, skolmaten-adapter.md, smhi-adapter.md]
+updated: 2026-09-22 (wired smhi.WeatherSource into handleIndex)
 generated: { by: worker, at: 2026-09-18T00:00:00Z }
-verified: [{ by: "human", at: 2026-09-18 }, { by: "human", at: 2026-09-18 }, { by: "human", at: 2026-09-18 }, { by: "human", at: 2026-09-18 }, { by: "human", at: 2026-09-21 }]
+verified: [{ by: "human", at: 2026-09-18 }, { by: "human", at: 2026-09-18 }, { by: "human", at: 2026-09-18 }, { by: "human", at: 2026-09-18 }, { by: "human", at: 2026-09-21 }, { by: "human", at: 2026-09-22 }]
 ---
 
 # Composition Root (`cmd/family-dashboard`)
@@ -31,13 +31,15 @@ merging, and deriving today/homework/upcoming views all live in
 ## Key Rules & Mechanics
 - Config parsing lives in `config/config.go` (`package config`), not in
   `cmd/family-dashboard`: exported `Source` (`Name`/`Type`/`URL` JSON
-  fields), `School` (`Name`/`RSSURL`, JSON `rssUrl`), `Config`
-  (`Sources []Source`, `School School`), and `Load(path) (Config, error)`.
-  The config file's JSON root is `{"sources": [...], "school": {...}}`, not
-  a bare array — `school` carries the shared lunch-feed config, separate
-  from per-kid calendar `Source`s. It imports only `encoding/json`, `fmt`,
-  `os` — no dependency on `family-dashboard` or `family-dashboard/webcal`,
-  since parsing shouldn't need to know about adapters.
+  fields), `School` (`Name`/`RSSURL`, JSON `rssUrl`), `Location`
+  (`Lat`/`Lon float64`), `Config` (`Sources []Source`, `School School`,
+  `Location Location`), and `Load(path) (Config, error)`. The config file's
+  JSON root is `{"sources": [...], "school": {...}, "location": {...}}`,
+  not a bare array — `school` and `location` carry shared, non-per-kid
+  config (lunch feed, weather coordinates). It imports only
+  `encoding/json`, `fmt`, `os` — no dependency on `family-dashboard` or
+  `family-dashboard/webcal`, since parsing shouldn't need to know about
+  adapters.
 - `buildSource(cfg config.Source) (dashboard.EventSource, error)` lives in
   `cmd/family-dashboard/main.go` itself, not in the `config` package —
   it wires a parsed `config.Source` to a concrete adapter (`webcal.New`),
@@ -53,16 +55,17 @@ merging, and deriving today/homework/upcoming views all live in
   Successful builds are collected into `[]dashboard.NamedSource{Owner:
   src.Name, Source: source}` and passed once to `dashboard.NewCollector(...)`,
   whose result is stored and handed to `handleIndex`.
-- `handleIndex(collector *dashboard.Collector, lunchSource dashboard.LunchSource)`
+- `handleIndex(collector *dashboard.Collector, lunchSource dashboard.LunchSource, weatherSource dashboard.WeatherSource)`
   no longer loops over sources or calls
   `TodayEvents`/`HomeworkEvents`/`UpcomingEvents`/`WithOwner` directly — its
   closure calls `collector.Collect(r.Context(), time.Now())` to get the
   three filtered event slices, then `collector.Owners()` for the owner
-  list, and passes both plus a dish list into `web.NewPageData(today,
-  homework, upcoming, owners, dishes, time.Now())` / `web.Render` (see
-  [webcal-adapter.md](webcal-adapter.md) sibling pattern in the `web`
-  package) to produce the HTML response. `r.Context()` still flows through
-  to `Collect` so a client disconnect cancels in-flight fetches.
+  list, and passes both plus a dish list and a `*float64` temperature into
+  `web.NewPageData(today, homework, upcoming, owners, dishes, temperature,
+  time.Now())` / `web.Render` (see [webcal-adapter.md](webcal-adapter.md)
+  sibling pattern in the `web` package) to produce the HTML response.
+  `r.Context()` still flows through to `Collect` so a client disconnect
+  cancels in-flight fetches.
 - `lunchSource` is built once in `main()` (see
   [skolmaten-adapter.md](skolmaten-adapter.md)) — `nil` if
   `cfg.School.RSSURL` is empty. `handleIndex` calls `lunchSource.Lunch(r.Context())`
@@ -70,6 +73,14 @@ merging, and deriving today/homework/upcoming views all live in
   the request continues with an empty dish list (`nil []string`), same
   log-and-continue philosophy as a failing calendar source in
   `Collector.Collect`.
+- `weatherSource` is built once in `main()` (see
+  [smhi-adapter.md](smhi-adapter.md)) — `nil` if `cfg.Location.Lat == 0 &&
+  cfg.Location.Lon == 0`. `handleIndex` calls
+  `weatherSource.Weather(r.Context())` per request only when non-nil; a
+  `Weather` error is `slog.Error`-logged and the request continues with a
+  `nil` temperature (`*float64`), same log-and-continue philosophy as the
+  lunch source. On success, `&reading.Temperature` (a pointer into the
+  local `reading` variable) is passed to `web.NewPageData`.
 - The `ownerNames` free function is gone — `Collector.Owners()` replaces it,
   computed once in `NewCollector` from the same `NamedSource` pairs used for
   fetching, so the owner list and the fetch list can't drift apart.

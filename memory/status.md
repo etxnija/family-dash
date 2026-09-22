@@ -321,3 +321,23 @@ Session-to-session progress log. Distinct from AGENTS.md (stable rules).
 
 
 **Run metrics:** 3 driver call(s), $1.4006, session a6495649-031a-46d5-9560-8694626d2214
+
+## 2026-09-22 — Task: Wire SMHI weather into dashboard
+
+- Added `weather.go` (`package dashboard`): `WeatherReading{Temperature float64}` and `WeatherSource` port
+  (`Weather(ctx) (WeatherReading, error)`), mirroring `lunch.go`. Added `smhi/smhi.go`: `Client` (lat/lon +
+  `*http.Client`), `New(lat, lon, client) *Client`, and `Weather(ctx)` implementing `dashboard.WeatherSource` by
+  fetching the SMHI point-forecast JSON API and returning the first `timeSeries` entry's `air_temperature`; an
+  empty `timeSeries` is an error (unlike skolmaten's empty-feed case, there's no sensible zero fallback). Added
+  `smhi/smhi_test.go` (`stubRoundTripper` pattern) covering a realistic response, empty `timeSeries`, and an HTTP
+  404. Added `config.Location{Lat, Lon float64}` + `Config.Location` field, updated `config/config_test.go` and
+  `sources.local.example.json`. `cmd/family-dashboard/main.go` builds `smhi.New(...)` as a `dashboard.WeatherSource`
+  when `cfg.Location.Lat != 0 || cfg.Location.Lon != 0` (else logs and leaves nil); `handleIndex` fetches per
+  request, log-and-continue with a nil temperature on error, passes `*float64` through to `web.NewPageData`.
+  `web/page.go`: added `PageData.Temperature *float64`, a `temperature *float64` param to `NewPageData` (after
+  `lunch`, before `now`), and a `temperatureDisplay` FuncMap helper (rounds to nearest whole degree, `"—°"`
+  fallback for nil). Updated all `NewPageData` call sites in `web/page_test.go`, added `TestNewPageData_Weather`
+  and a weather case to `TestRender`. `web/templates/page.html.tmpl`'s weather block now branches on
+  `{{if .Temperature}}` between live SMHI data and the original static fallback markup. Added
+  `memory/concepts/smhi-adapter.md` and updated `composition-root.md`/`dashboard-page.md`/`index.md`. `go build`,
+  `go vet`, `gofmt -l .`, `go test ./... -race`, and `sensors/lint.sh` all pass.
