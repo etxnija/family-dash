@@ -75,7 +75,7 @@ type PageData struct {
 	Homework    []HomeworkGroup
 	Upcoming    []UpcomingRow
 	Lunch       []string
-	Temperature *float64
+	Weather     *dashboard.WeatherReading
 }
 
 // ownerColors maps a known owner name to its CSS custom-property name.
@@ -94,9 +94,9 @@ func ownerColor(name string) string {
 }
 
 // NewPageData builds a PageData for events, homeworkEvents, upcomingEvents,
-// owners, lunch, temperature, and now, converting all times to
+// owners, lunch, weather, and now, converting all times to
 // Europe/Stockholm for display.
-func NewPageData(events []dashboard.Event, homeworkEvents []dashboard.Event, upcomingEvents []dashboard.Event, owners []string, lunch []string, temperature *float64, now time.Time) (PageData, error) {
+func NewPageData(events []dashboard.Event, homeworkEvents []dashboard.Event, upcomingEvents []dashboard.Event, owners []string, lunch []string, weather *dashboard.WeatherReading, now time.Time) (PageData, error) {
 	loc, err := time.LoadLocation("Europe/Stockholm")
 	if err != nil {
 		return PageData{}, err
@@ -115,7 +115,7 @@ func NewPageData(events []dashboard.Event, homeworkEvents []dashboard.Event, upc
 		Homework:    buildHomeworkGroups(homeworkEvents, owners, localNow, loc),
 		Upcoming:    buildUpcomingRows(upcomingEvents, loc),
 		Lunch:       lunch,
-		Temperature: temperature,
+		Weather:     weather,
 	}, nil
 }
 
@@ -336,12 +336,9 @@ func ownerInitial(s string) string {
 }
 
 // temperatureDisplay formats temperature as a rounded whole-degree string
-// (e.g. "11°"), or the no-data fallback "—°" if temperature is nil.
-func temperatureDisplay(temperature *float64) string {
-	if temperature == nil {
-		return "—°"
-	}
-	return fmt.Sprintf("%d°", int(math.Round(*temperature)))
+// (e.g. "11°").
+func temperatureDisplay(temperature float64) string {
+	return fmt.Sprintf("%d°", int(math.Round(temperature)))
 }
 
 // Render executes the page template for data into w.

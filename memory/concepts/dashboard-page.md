@@ -3,7 +3,7 @@ type: component
 tags: [web, page, template, i18n, funcmap, receipt-design, lunch, weather]
 summary: web/page.go PageData/Render — receipt-style monochrome template, Swedish display translations via FuncMap, data-driven Skollunch and weather panels.
 links: [composition-root.md, skolmaten-adapter.md, smhi-adapter.md]
-updated: 2026-09-22 (added Temperature field, wired weather panel to real data)
+updated: 2026-09-22 (Weather field replaces Temperature; panel shows low/sky/precipitation)
 generated: { by: worker, at: 2026-09-21T00:00:00Z }
 verified: [{ by: "human", at: 2026-09-22 }, { by: "human", at: 2026-09-22 }]
 ---
@@ -67,17 +67,23 @@ HTML output is Swedish.
   else one `<div class="row">{{.}}</div>` per dish — no owner-initial
   prefix, since lunch is a single shared feed, not per-kid.
 
-- The weather panel is data-driven like Skollunch: `PageData.Temperature
-  *float64` (see [smhi-adapter.md](smhi-adapter.md)) is passed straight
-  through by `NewPageData`'s new `temperature *float64` parameter
-  (positioned after `lunch`, before `now`) with no unit conversion. The
-  template's `{{if .Temperature}}` branch is true only for a non-nil
-  pointer (a genuine 0.0°C reading still renders, since Go templates treat
-  pointer truth as nil-ness, not pointed-to zero-value); it calls the new
-  `temperatureDisplay` FuncMap helper (`math.Round` to the nearest whole
-  degree, formatted `"11°"`) and a static `"SMHI"` source label. The
-  `{{else}}` branch keeps the original static fallback markup (`&mdash;&deg;`
-  / "ingen väderkälla") unchanged.
+- The weather panel is data-driven like Skollunch: `PageData.Weather
+  *dashboard.WeatherReading` (see [smhi-adapter.md](smhi-adapter.md)) is
+  passed straight through by `NewPageData`'s `weather
+  *dashboard.WeatherReading` parameter (positioned after `lunch`, before
+  `now`) with no transformation — the whole reading struct is handed to the
+  template rather than flattened, unlike Events/Homework/Upcoming. The
+  template's `{{if .Weather}}` branch is true only for a non-nil pointer (a
+  genuine 0.0°C reading still renders, since Go templates treat pointer
+  truth as nil-ness, not pointed-to zero-value); it calls
+  `temperatureDisplay` (now `func(float64) string` — the nil check was
+  dropped since it's only ever invoked inside the `{{if .Weather}}` guard,
+  so the argument is always valid) on `.Weather.Temperature` and
+  `.Weather.LowTemperature`, plus a static `"SMHI"` source label and two
+  more `{{if}}`-branched lines: `{{if .Weather.Sunny}}Sol{{else}}Mulet{{end}}`
+  and `{{if .Weather.PrecipitationExpected}}regn idag{{else}}torrt idag{{end}}`.
+  The `{{else}}` branch keeps the original static fallback markup
+  (`&mdash;&deg;` / "ingen väderkälla") unchanged.
 
 ## Gotchas & Failure Modes
 - Adding a new day-label or date value that doesn't map into `svWeekdays`

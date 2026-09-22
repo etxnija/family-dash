@@ -116,9 +116,12 @@
   <div class="clock-weather">
     <div class="clock">{{.CurrentTime}}</div>
     <div class="weather">
-      {{if .Temperature}}
-      <div class="temp">{{temperatureDisplay .Temperature}}</div>
+      {{if .Weather}}
+      <div class="temp">{{temperatureDisplay .Weather.Temperature}}</div>
       <div class="source">SMHI</div>
+      <div class="source">L&auml;gst idag: {{temperatureDisplay .Weather.LowTemperature}}</div>
+      <div class="source">{{if .Weather.Sunny}}Sol{{else}}Mulet{{end}}</div>
+      <div class="source">{{if .Weather.PrecipitationExpected}}regn idag{{else}}torrt idag{{end}}</div>
       {{else}}
       <div class="temp">&mdash;&deg;</div>
       <div class="source">ingen v&auml;derk&auml;lla</div>

@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"time"
 
 	dashboard "family-dashboard"
 )
@@ -22,7 +23,9 @@ type forecast struct {
 type timeSeriesEntry struct {
 	Time string `json:"time"`
 	Data struct {
-		AirTemperature float64 `json:"air_temperature"`
+		AirTemperature    float64 `json:"air_temperature"`
+		SymbolCode        int     `json:"symbol_code"`
+		PrecipitationType int     `json:"predominant_precipitation_type_at_surface"`
 	} `json:"data"`
 }
 
@@ -42,13 +45,14 @@ func New(lat, lon float64, client *http.Client) *Client {
 
 // Weather implements dashboard.WeatherSource by fetching the SMHI point
 // forecast and returning the first (soonest) time series entry's
-// temperature.
-func (c *Client) Weather(ctx context.Context) (dashboard.WeatherReading, error) {
+// temperature, plus today's low temperature, sky condition, and
+// precipitation outlook.
+func (c *Client) Weather(ctx context.Context, now time.Time) (dashboard.WeatherReading, error) {
 	data, err := c.fetch(ctx)
 	if err != nil {
 		return dashboard.WeatherReading{}, err
 	}
-	return parseForecast(data)
+	return parseForecast(data, now)
 }
 
 // fetch retrieves the raw forecast JSON over HTTP.
@@ -78,9 +82,12 @@ func (c *Client) fetch(ctx context.Context) ([]byte, error) {
 }
 
 // parseForecast parses raw forecast JSON into a dashboard.WeatherReading,
-// using the first time series entry. An empty timeSeries is an error, since
-// there is no sensible zero-value reading to fall back to.
-func parseForecast(data []byte) (dashboard.WeatherReading, error) {
+// using the first time series entry for Temperature and Sunny, and the
+// entries whose local date matches now's local date (in Europe/Stockholm,
+// falling back to UTC if the zone fails to load) for LowTemperature and
+// PrecipitationExpected. An empty timeSeries is an error, since there is no
+// sensible zero-value reading to fall back to.
+func parseForecast(data []byte, now time.Time) (dashboard.WeatherReading, error) {
 	var f forecast
 	if err := json.Unmarshal(data, &f); err != nil {
 		return dashboard.WeatherReading{}, fmt.Errorf("smhi: parse forecast: %w", err)
@@ -90,5 +97,37 @@ func parseForecast(data []byte) (dashboard.WeatherReading, error) {
 		return dashboard.WeatherReading{}, fmt.Errorf("smhi: forecast has no time series entries")
 	}
 
-	return dashboard.WeatherReading{Temperature: f.TimeSeries[0].Data.AirTemperature}, nil
+	loc, err := time.LoadLocation("Europe/Stockholm")
+	if err != nil {
+		loc = time.UTC
+	}
+	nowDate := now.In(loc).Format("2006-01-02")
+
+	first := f.TimeSeries[0]
+	reading := dashboard.WeatherReading{
+		Temperature: first.Data.AirTemperature,
+		Sunny:       first.Data.SymbolCode == 1 || first.Data.SymbolCode == 2,
+	}
+
+	low := first.Data.AirTemperature
+	haveToday := false
+	for _, entry := range f.TimeSeries {
+		entryTime, err := time.Parse(time.RFC3339, entry.Time)
+		if err != nil {
+			continue
+		}
+		if entryTime.In(loc).Format("2006-01-02") != nowDate {
+			continue
+		}
+		if !haveToday || entry.Data.AirTemperature < low {
+			low = entry.Data.AirTemperature
+		}
+		if entry.Data.PrecipitationType != 0 {
+			reading.PrecipitationExpected = true
+		}
+		haveToday = true
+	}
+	reading.LowTemperature = low
+
+	return reading, nil
 }

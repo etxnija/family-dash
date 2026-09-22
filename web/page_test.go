@@ -276,27 +276,27 @@ func TestNewPageData_Lunch(t *testing.T) {
 func TestNewPageData_Weather(t *testing.T) {
 	now := time.Date(2026, 9, 18, 7, 42, 0, 0, time.UTC)
 
-	t.Run("non-nil temperature", func(t *testing.T) {
-		temp := 10.9
-		data, err := NewPageData(nil, nil, nil, []string{"Kaj", "Lillian"}, nil, &temp, now)
+	t.Run("non-nil weather", func(t *testing.T) {
+		weather := &dashboard.WeatherReading{Temperature: 10.9, LowTemperature: 8.5, Sunny: true, PrecipitationExpected: false}
+		data, err := NewPageData(nil, nil, nil, []string{"Kaj", "Lillian"}, nil, weather, now)
 		if err != nil {
 			t.Fatalf("NewPageData() error = %v", err)
 		}
-		if data.Temperature == nil {
-			t.Fatal("Temperature = nil, want non-nil")
+		if data.Weather == nil {
+			t.Fatal("Weather = nil, want non-nil")
 		}
-		if *data.Temperature != temp {
-			t.Errorf("*Temperature = %v, want %v", *data.Temperature, temp)
+		if *data.Weather != *weather {
+			t.Errorf("*Weather = %+v, want %+v", *data.Weather, *weather)
 		}
 	})
 
-	t.Run("nil temperature", func(t *testing.T) {
+	t.Run("nil weather", func(t *testing.T) {
 		data, err := NewPageData(nil, nil, nil, []string{"Kaj", "Lillian"}, nil, nil, now)
 		if err != nil {
 			t.Fatalf("NewPageData() error = %v", err)
 		}
-		if data.Temperature != nil {
-			t.Errorf("Temperature = %v, want nil", data.Temperature)
+		if data.Weather != nil {
+			t.Errorf("Weather = %v, want nil", data.Weather)
 		}
 	})
 }
@@ -448,12 +448,12 @@ func TestRender(t *testing.T) {
 		{
 			name: "weather with temperature",
 			data: PageData{
-				Weekday:     "Friday",
-				DateLabel:   "18 September",
-				Owners:      []string{"Kaj", "Lillian"},
-				Temperature: func() *float64 { t := 10.9; return &t }(),
+				Weekday:   "Friday",
+				DateLabel: "18 September",
+				Owners:    []string{"Kaj", "Lillian"},
+				Weather:   &dashboard.WeatherReading{Temperature: 10.9, LowTemperature: 8.5, Sunny: true},
 			},
-			want: []string{"11°", "SMHI"},
+			want: []string{"11°", "SMHI", "Sol", "torrt idag"},
 		},
 	}
 

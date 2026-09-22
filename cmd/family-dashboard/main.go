@@ -88,17 +88,17 @@ func handleIndex(collector *dashboard.Collector, lunchSource dashboard.LunchSour
 			}
 		}
 
-		var temperature *float64
+		var weather *dashboard.WeatherReading
 		if weatherSource != nil {
-			reading, err := weatherSource.Weather(r.Context())
+			reading, err := weatherSource.Weather(r.Context(), time.Now())
 			if err != nil {
 				slog.Error("fetching weather", "error", err)
 			} else {
-				temperature = &reading.Temperature
+				weather = &reading
 			}
 		}
 
-		data, err := web.NewPageData(today, homework, upcoming, collector.Owners(), dishes, temperature, time.Now())
+		data, err := web.NewPageData(today, homework, upcoming, collector.Owners(), dishes, weather, time.Now())
 		if err != nil {
 			slog.Error("building page data", "error", err)
 			http.Error(w, "internal error", http.StatusInternalServerError)
