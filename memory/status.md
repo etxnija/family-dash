@@ -341,3 +341,6 @@ Session-to-session progress log. Distinct from AGENTS.md (stable rules).
   `{{if .Temperature}}` between live SMHI data and the original static fallback markup. Added
   `memory/concepts/smhi-adapter.md` and updated `composition-root.md`/`dashboard-page.md`/`index.md`. `go build`,
   `go vet`, `gofmt -l .`, `go test ./... -race`, and `sensors/lint.sh` all pass.
+
+
+**Run metrics:** 4 driver call(s), $3.6079, session 1fc760cf-d518-441b-93cd-27c99733e1ac
