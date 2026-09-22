@@ -318,3 +318,6 @@ Session-to-session progress log. Distinct from AGENTS.md (stable rules).
   and its now-unused `.placeholder-note` CSS from `web/templates/page.html.tmpl`; updated
   `memory/concepts/dashboard-page.md` to drop the stale "Skolschema/Skollunch remain static placeholders" note.
   `go build` and `go test ./...` pass.
+
+
+**Run metrics:** 3 driver call(s), $1.4006, session a6495649-031a-46d5-9560-8694626d2214
