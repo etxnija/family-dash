@@ -3,7 +3,7 @@ type: component
 tags: [smhi, weather, adapter, hexagonal]
 summary: weather.go's WeatherReading/WeatherSource port and the SMHI point-forecast adapter that fetches+parses today's temperature, low, sky condition, and precipitation.
 links: [skolmaten-adapter.md, composition-root.md, dashboard-page.md]
-updated: 2026-09-22 (extended with LowTemperature/Sunny/PrecipitationExpected, Weather now takes now time.Time)
+updated: 2026-09-22 (PrecipitationExpected now derived from probability_of_precipitation, not pcat)
 generated: { by: worker, at: 2026-09-22T00:00:00Z }
 verified: [{ by: "human", at: 2026-09-22 }]
 ---
@@ -36,8 +36,8 @@ as `skolmaten`/`webcal`.
   unmarshals the JSON body into a local `forecast{TimeSeries
   []timeSeriesEntry}` shape (`timeSeriesEntry{Time string; Data
   struct{ AirTemperature float64; SymbolCode int
-  `json:"symbol_code"`; PrecipitationType int
-  `json:"predominant_precipitation_type_at_surface"` }}`).
+  `json:"symbol_code"`; ProbabilityOfPrecipitation int
+  `json:"probability_of_precipitation"` }}`).
 - `parseForecast(data, now)`: `Temperature` and `Sunny` come from
   `TimeSeries[0]` only (the soonest forecast point) — `Sunny` is
   `SymbolCode == 1 || SymbolCode == 2` (SMHI's "clear sky"/"nearly clear
@@ -45,12 +45,17 @@ as `skolmaten`/`webcal`.
   "today" entries: each entry's `Time` (RFC3339) is parsed and compared, in
   `Europe/Stockholm` (falling back to UTC if the zone fails to load), to
   `now`'s local date. `LowTemperature` is the min `AirTemperature` among
-  today entries; `PrecipitationExpected` is true if any today entry has
-  `PrecipitationType != 0`. If no entry's local date matches `now`'s (e.g.
-  `now` is near midnight and the forecast's first entries are already
-  "tomorrow"), `LowTemperature` falls back to `TimeSeries[0]`'s temperature
-  and `PrecipitationExpected` stays false — same "no sensible per-day data,
-  use the soonest point" philosophy as the original first-entry-only logic.
+  today entries; `PrecipitationExpected` is true if any today entry's
+  `ProbabilityOfPrecipitation >= precipitationProbabilityThreshold` (a
+  package-level const, `30`). SMHI's `predominant_precipitation_type_at_surface`
+  (pcat) field was tried first but flagged "any" precipitation type as
+  present regardless of likelihood, producing false positives; probability
+  gives a tunable magnitude signal instead. If no entry's local date matches
+  `now`'s (e.g. `now` is near midnight and the forecast's first entries are
+  already "tomorrow"), `LowTemperature` falls back to `TimeSeries[0]`'s
+  temperature and `PrecipitationExpected` stays false — same "no sensible
+  per-day data, use the soonest point" philosophy as the original
+  first-entry-only logic.
 - An empty `timeSeries` array is still an error (unlike skolmaten's
   empty-feed case) — there's no sensible zero-value reading to fall back
   to, so `parseForecast` returns an error rather than a zero

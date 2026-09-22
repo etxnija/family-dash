@@ -23,11 +23,16 @@ type forecast struct {
 type timeSeriesEntry struct {
 	Time string `json:"time"`
 	Data struct {
-		AirTemperature    float64 `json:"air_temperature"`
-		SymbolCode        int     `json:"symbol_code"`
-		PrecipitationType int     `json:"predominant_precipitation_type_at_surface"`
+		AirTemperature             float64 `json:"air_temperature"`
+		SymbolCode                 int     `json:"symbol_code"`
+		ProbabilityOfPrecipitation int     `json:"probability_of_precipitation"`
 	} `json:"data"`
 }
+
+// precipitationProbabilityThreshold is the minimum probability of
+// precipitation (percent) for a today entry to count as "precipitation
+// expected".
+const precipitationProbabilityThreshold = 30
 
 // Client fetches the SMHI point forecast for a fixed location.
 type Client struct {
@@ -122,7 +127,7 @@ func parseForecast(data []byte, now time.Time) (dashboard.WeatherReading, error)
 		if !haveToday || entry.Data.AirTemperature < low {
 			low = entry.Data.AirTemperature
 		}
-		if entry.Data.PrecipitationType != 0 {
+		if entry.Data.ProbabilityOfPrecipitation >= precipitationProbabilityThreshold {
 			reading.PrecipitationExpected = true
 		}
 		haveToday = true

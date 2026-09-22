@@ -367,5 +367,16 @@ Session-to-session progress log. Distinct from AGENTS.md (stable rules).
 
 **Run metrics:** 7 driver call(s), $2.7488, session 5097678a-1e12-4cc6-a3f1-95095dec444b
 
+## 2026-09-22 — Switch precipitation detection to probability
+
+- `smhi/smhi.go`: `timeSeriesEntry.Data.PrecipitationType` (`predominant_precipitation_type_at_surface`) replaced with
+  `ProbabilityOfPrecipitation int` (`probability_of_precipitation`) — the pcat field flagged "any" precipitation type
+  as present (including trace/false-positive cases) with no magnitude signal. `parseForecast`'s today-entry loop now
+  sets `PrecipitationExpected` when `ProbabilityOfPrecipitation >= precipitationProbabilityThreshold` (new
+  package-level const, `30`). `smhi/smhi_test.go` updated: `exampleResponse`'s two today entries now use
+  probabilities 3 (below threshold) and 50 (above), so the "example response" case now expects
+  `wantPrecipitationExpected: true`; "no precipitation when today's entries all have pcat 0" renamed to "no
+  precipitation when probability below threshold" (probability 3); added a boundary case at exactly 30 (inclusive,
+  expects `true`). `go build`, `go vet`, `gofmt -l .`, sensors/test.sh, sensors/lint.sh all pass.
 
 **Run metrics:** 9 driver call(s), $4.0144, session 1d998199-90dd-4791-ab20-ea6bd315e5f3

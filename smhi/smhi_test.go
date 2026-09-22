@@ -23,7 +23,7 @@ const exampleResponse = `{
       "data": {
         "air_temperature": 10.9,
         "symbol_code": 1,
-        "predominant_precipitation_type_at_surface": 0
+        "probability_of_precipitation": 3
       }
     },
     {
@@ -33,7 +33,7 @@ const exampleResponse = `{
       "data": {
         "air_temperature": 7.2,
         "symbol_code": 1,
-        "predominant_precipitation_type_at_surface": 1
+        "probability_of_precipitation": 50
       }
     },
     {
@@ -43,7 +43,7 @@ const exampleResponse = `{
       "data": {
         "air_temperature": 15.5,
         "symbol_code": 5,
-        "predominant_precipitation_type_at_surface": 0
+        "probability_of_precipitation": 0
       }
     }
   ]
@@ -86,6 +86,8 @@ func TestWeather(t *testing.T) {
 		wantErr                   bool
 	}{
 		{
+			// exampleResponse's 18:00 entry has probability_of_precipitation:
+			// 50, which is >= precipitationProbabilityThreshold (30).
 			name:                      "example response yields first entry's temperature and today's low/precipitation",
 			statusCode:                http.StatusOK,
 			body:                      exampleResponse,
@@ -98,21 +100,31 @@ func TestWeather(t *testing.T) {
 		{
 			name:        "not sunny when first entry's symbol_code is 3 or higher",
 			statusCode:  http.StatusOK,
-			body:        `{"timeSeries":[{"time":"2026-09-22T12:00:00Z","data":{"air_temperature":10.9,"symbol_code":5,"predominant_precipitation_type_at_surface":0}}]}`,
+			body:        `{"timeSeries":[{"time":"2026-09-22T12:00:00Z","data":{"air_temperature":10.9,"symbol_code":5,"probability_of_precipitation":0}}]}`,
 			now:         time.Date(2026, 9, 22, 8, 0, 0, 0, loc),
 			wantTemp:    10.9,
 			wantLowTemp: 10.9,
 			wantSunny:   false,
 		},
 		{
-			name:                      "no precipitation when today's entries all have pcat 0",
+			name:                      "no precipitation when probability below threshold",
 			statusCode:                http.StatusOK,
-			body:                      `{"timeSeries":[{"time":"2026-09-22T12:00:00Z","data":{"air_temperature":10.9,"symbol_code":1,"predominant_precipitation_type_at_surface":0}}]}`,
+			body:                      `{"timeSeries":[{"time":"2026-09-22T12:00:00Z","data":{"air_temperature":10.9,"symbol_code":1,"probability_of_precipitation":3}}]}`,
 			now:                       time.Date(2026, 9, 22, 8, 0, 0, 0, loc),
 			wantTemp:                  10.9,
 			wantLowTemp:               10.9,
 			wantSunny:                 true,
 			wantPrecipitationExpected: false,
+		},
+		{
+			name:                      "precipitation expected at exact threshold boundary",
+			statusCode:                http.StatusOK,
+			body:                      `{"timeSeries":[{"time":"2026-09-22T12:00:00Z","data":{"air_temperature":10.9,"symbol_code":1,"probability_of_precipitation":30}}]}`,
+			now:                       time.Date(2026, 9, 22, 8, 0, 0, 0, loc),
+			wantTemp:                  10.9,
+			wantLowTemp:               10.9,
+			wantSunny:                 true,
+			wantPrecipitationExpected: true,
 		},
 		{
 			name:        "near-midnight now with no matching today entries falls back to first entry's temperature",
