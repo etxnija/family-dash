@@ -4,8 +4,10 @@ import (
 	"fmt"
 	"image"
 	"image/draw"
+	"slices"
 	"strings"
 	"sync"
+	"unicode/utf8"
 
 	"golang.org/x/image/font"
 	"golang.org/x/image/font/gofont/gomono"
@@ -70,11 +72,11 @@ func Render(v View) *image.Gray {
 	drawWeather(subImage(img, weatherRect), v.Weather)
 
 	content := subImage(img, contentRect)
-	width := content.Bounds().Dx()
-	drawSection(content, lunchTop, headingLunch, lunchRows(v.Lunch, width), emptyLunch)
-	drawSection(content, todayTop, headingToday, eventRows(v.Events, width), emptyToday)
-	drawSection(content, homeworkTop, headingHomework, homeworkRows(v.Homework, width), emptyHomework)
-	drawSection(content, upcomingTop, headingUpcoming, upcomingRows(v.Upcoming, width), emptyUpcoming)
+	layout := layoutSections(sectionEntries(v, content.Bounds().Dx()))
+	drawSection(content, layout[sectionLunch].top, headingLunch, layout[sectionLunch].lines, emptyLunch)
+	drawSection(content, layout[sectionToday].top, headingToday, layout[sectionToday].lines, emptyToday)
+	drawSection(content, layout[sectionHomework].top, headingHomework, layout[sectionHomework].lines, emptyHomework)
+	drawSection(content, layout[sectionUpcoming].top, headingUpcoming, layout[sectionUpcoming].lines, emptyUpcoming)
 
 	threshold(img)
 	return img
@@ -152,30 +154,42 @@ func drawSection(dst *image.Gray, top int, heading string, rows []string, empty 
 	}
 }
 
-// lunchRows returns the visible lunch lines, each dish wrapped to
-// maxWidth.
-func lunchRows(lunch []string, maxWidth int) []string {
+// sectionEntries returns the wrapped entries of every section, in section
+// order, each wrapped to maxWidth.
+func sectionEntries(v View, maxWidth int) [sectionCount][][]string {
+	var entries [sectionCount][][]string
+	entries[sectionLunch] = lunchEntries(v.Lunch, maxWidth)
+	entries[sectionToday] = eventEntries(v.Events, maxWidth)
+	entries[sectionHomework] = homeworkEntries(v.Homework, maxWidth)
+	entries[sectionUpcoming] = upcomingEntries(v.Upcoming, maxWidth)
+	return entries
+}
+
+// lunchEntries returns the lunch dishes, each wrapped to maxWidth.
+func lunchEntries(lunch []string, maxWidth int) [][]string {
 	entries := make([][]string, 0, len(lunch))
 	for _, dish := range lunch {
 		entries = append(entries, wrapEntry(bodyFace, "", dish, "", maxWidth))
 	}
-	return budgetLines(entries, lunchLineBudget)
+	return entries
 }
 
-// eventRows returns the visible "<time>  <Owner> – <Summary>[, <Location>]"
-// lines, each event wrapped to maxWidth.
-func eventRows(events []EventRow, maxWidth int) []string {
+// eventEntries returns the "<time>  <Owner> – <Summary>[, <Location>]"
+// entries, each event wrapped to maxWidth. Every time is padded to the
+// widest one among all events, so the summaries line up.
+func eventEntries(events []EventRow, maxWidth int) [][]string {
+	width := maxLabelWidth(events, func(e EventRow) string { return e.Time })
 	entries := make([][]string, 0, len(events))
 	for _, e := range events {
-		entries = append(entries, wrapEntry(bodyFace, e.Time+"  "+ownerPrefix(e.Owner), withLocation(e.Summary, e.Location), "", maxWidth))
+		entries = append(entries, wrapEntry(bodyFace, padRight(e.Time, width)+"  "+ownerPrefix(e.Owner), withLocation(e.Summary, e.Location), "", maxWidth))
 	}
-	return budgetLines(entries, todayLineBudget)
+	return entries
 }
 
-// homeworkRows returns the visible "<Initial>  <Summary>[ (Prov)] –
-// <daylabel>" lines across all groups, each item wrapped to maxWidth so
-// the day label is never cut.
-func homeworkRows(groups []HomeworkGroup, maxWidth int) []string {
+// homeworkEntries returns the "<Initial>  <Summary>[ (Prov)] – <daylabel>"
+// entries across all groups, each item wrapped to maxWidth so the day
+// label is never cut.
+func homeworkEntries(groups []HomeworkGroup, maxWidth int) [][]string {
 	var entries [][]string
 	for _, g := range groups {
 		for _, item := range g.Items {
@@ -186,18 +200,111 @@ func homeworkRows(groups []HomeworkGroup, maxWidth int) []string {
 			entries = append(entries, wrapEntry(bodyFace, g.Initial+"  ", item.Summary, suffix, maxWidth))
 		}
 	}
-	return budgetLines(entries, homeworkLineBudget)
+	return entries
 }
 
-// upcomingRows returns the visible "<Abbrev>  <Owner> – <Summary>[,
-// <Location>], <time|heldag>" lines, each entry wrapped to maxWidth so the
-// time is never cut.
-func upcomingRows(upcoming []UpcomingRow, maxWidth int) []string {
+// upcomingEntries returns the "<Abbrev>  <Owner> – <Summary>[,
+// <Location>], <time|heldag>" entries, each wrapped to maxWidth so the
+// time is never cut. Every weekday is padded to the widest one among all
+// rows, so the summaries line up.
+func upcomingEntries(upcoming []UpcomingRow, maxWidth int) [][]string {
+	width := maxLabelWidth(upcoming, func(u UpcomingRow) string { return u.Weekday })
 	entries := make([][]string, 0, len(upcoming))
 	for _, u := range upcoming {
-		entries = append(entries, wrapEntry(bodyFace, u.Weekday+"  "+ownerPrefix(u.Owner), withLocation(u.Summary, u.Location), ", "+u.Time, maxWidth))
+		entries = append(entries, wrapEntry(bodyFace, padRight(u.Weekday, width)+"  "+ownerPrefix(u.Owner), withLocation(u.Summary, u.Location), ", "+u.Time, maxWidth))
 	}
-	return budgetLines(entries, upcomingLineBudget)
+	return entries
+}
+
+// sectionLayout is where a section is drawn: the Y of its rule and its
+// visible body lines (nil when it has no entries and shows its empty
+// text).
+type sectionLayout struct {
+	top   int
+	lines []string
+}
+
+// layoutSections chooses each section's visible lines and packs the
+// sections below sectionsTop so they fit above contentBottom. Every
+// section starts with all its lines. While they don't fit, the first
+// section in trimOrder whose line budget is above its floor loses one
+// line of budget (budgetLines), so a section is trimmed down to its floor
+// before the next one is touched. The floor is a budget, not a visible
+// line count: minTodayLines for IDAG and minSectionLines for the rest, or
+// the section's own line count if lower. budgetLines may show fewer lines
+// than the budget, since an entry is never cut. An empty section takes one
+// line, for its empty text.
+func layoutSections(entries [sectionCount][][]string) [sectionCount]sectionLayout {
+	var layout [sectionCount]sectionLayout
+	var budget, floor [sectionCount]int
+	for i, e := range entries {
+		for _, entry := range e {
+			budget[i] += len(entry)
+		}
+		budget[i] = max(budget[i], 1)
+		minLines := minSectionLines
+		if i == sectionToday {
+			minLines = minTodayLines
+		}
+		floor[i] = min(minLines, budget[i])
+		layout[i].lines = budgetLines(e, budget[i])
+	}
+
+	packSections(&layout)
+	for !sectionsFit(layout) {
+		i := slices.IndexFunc(trimOrder[:], func(s int) bool { return budget[s] > floor[s] })
+		if i < 0 {
+			// Every section is at its floor; the constants make this
+			// unreachable, but don't loop forever.
+			break
+		}
+		s := trimOrder[i]
+		budget[s]--
+		layout[s].lines = budgetLines(entries[s], budget[s])
+		packSections(&layout)
+	}
+	return layout
+}
+
+// packSections sets each section's top: the first at sectionsTop, each
+// next one sectionGap below the previous section's last row.
+func packSections(layout *[sectionCount]sectionLayout) {
+	top := sectionsTop
+	for i := range layout {
+		layout[i].top = top
+		top += sectionHeight(sectionLines(layout[i])) + sectionGap
+	}
+}
+
+// sectionsFit reports whether the last section's last row, descent
+// included, stays above contentBottom.
+func sectionsFit(layout [sectionCount]sectionLayout) bool {
+	last := layout[sectionCount-1]
+	return last.top+sectionHeight(sectionLines(last))+bodyDescent <= contentBottom
+}
+
+// sectionLines returns the number of body lines s takes: one for the empty
+// text when it has no lines.
+func sectionLines(s sectionLayout) int {
+	return max(len(s.lines), 1)
+}
+
+// maxLabelWidth returns the widest label(row) among rows, in runes (Go
+// Mono is monospace, so runes are proportional to pixels). It runs on all
+// rows before any are trimmed, so the padding doesn't depend on which
+// rows end up visible.
+func maxLabelWidth[T any](rows []T, label func(T) string) int {
+	width := 0
+	for _, r := range rows {
+		width = max(width, utf8.RuneCountInString(label(r)))
+	}
+	return width
+}
+
+// padRight returns s followed by spaces up to width runes, or s unchanged
+// when it is already that wide.
+func padRight(s string, width int) string {
+	return s + strings.Repeat(" ", max(width-utf8.RuneCountInString(s), 0))
 }
 
 // ownerPrefix returns "<owner> – ", or "" when owner is empty.

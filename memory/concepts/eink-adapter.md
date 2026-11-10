@@ -1,11 +1,11 @@
 ---
 type: component
 tags: [eink, epaper, render, adapter, hexagonal, font]
-summary: eink/ e-paper adapter — Stockholm view-model, 1-bit portrait 480x800 renderer (Go Mono, single column, clock/weather band, two-line wrapped entries with line budgets, ClockRect top/bottom on multiples of 8), plus verified Waveshare 7.5" V2 driver facts for the panel adapter.
+summary: eink/ e-paper adapter — Stockholm view-model, 1-bit portrait 480x800 renderer (Go Mono, single column, clock/weather band, two-line wrapped entries, content-height sections trimmed by priority, ClockRect top/bottom on multiples of 8), plus verified Waveshare 7.5" V2 driver facts for the panel adapter.
 links: [docs/arch/adr/0002-dual-display-adapters-over-shared-interface.md, docs/arch/adr/0003-eink-panel-port-and-refresh-policy.md, docs/arch/adr/0004-portrait-frame-rotated-by-panel-adapter.md, docs/raspberry-pi-setup.md, dashboard-page.md, composition-root.md, eink-view.md]
 updated: 2026-11-10
 generated: { by: worker, at: 2026-11-10T00:00:00Z }
-verified: [{ by: "human", at: 2026-11-10 }]
+verified: [{ by: "human", at: 2026-11-10 }, { by: "human", at: 2026-11-10 }]
 ---
 
 # E-paper Adapter (`eink/`)
@@ -40,18 +40,40 @@ panel driver comes later, behind the port in
 - Entries wrap to at most `maxEntryLines` (2) lines via `wrapEntry`:
   line 1 starts with the prefix (time/weekday/initial + owner), line 2
   with a hanging indent of one space per prefix rune (Go Mono is
-  monospace). The body breaks greedily at spaces; the suffix (homework
-  `" (Prov)"`/day label, upcoming `", "+time`) is unbreakable and always
-  ends the last line. Body text past two lines, and a single word wider
-  than a whole line, are cut with `"…"` (`fitText`).
-- Section limits are line budgets (`lunchLineBudget` 4,
-  `todayLineBudget` 6, `homeworkLineBudget` 5, `upcomingLineBudget` 5)
-  that count body lines, not entries, including the `"+N till"` line.
-  `budgetLines` shows whole entries while they fit in `budget-1` lines and
-  stops at the first that doesn't. An entry that doesn't fit whole is
-  hidden entirely, never shown in part, and N counts hidden entries. Each
-  section has fixed room for its budget, so positions don't move with
-  content.
+  monospace). In IDAG and KOMMANDE DAGAR the time/weekday label is
+  right-padded with spaces (`padRight`, `maxLabelWidth`) to the widest
+  label among *all* the section's rows, before trimming, so summaries
+  line up in one column whichever rows end up visible; the padding is
+  part of the prefix, so the hanging indent follows it. LÄXOR OCH PROV
+  needs no padding: its label is the one-letter owner initial, so it is
+  naturally aligned. The body breaks greedily at spaces; the suffix
+  (homework `" (Prov)"`/day label, upcoming `", "+time`) is unbreakable
+  and always ends the last line. Body text past two lines, and a single
+  word wider than a whole line, are cut with `"…"` (`fitText`).
+- Sections flow from `lunchTop` (`sectionsTop`), each taking its natural
+  height: `sectionHeight(lines)` = `headingOffset + lines*rowHeight`, plus
+  `sectionGap` before the next section's rule. An empty section takes 1
+  line, for its empty text. Positions are computed per render by
+  `layoutSections` (pure, in `render.go`) from `sectionEntries`
+  (`lunchEntries`, `eventEntries`, `homeworkEntries`, `upcomingEntries`),
+  so they move with content. The sections fit when the last baseline
+  plus `bodyDescent` is ≤ `contentBottom` (20 body lines in total today).
+- When the total exceeds the area down to `contentBottom`,
+  `layoutSections` lowers one line of budget at a time in `trimOrder`
+  (KOMMANDE DAGAR → LÄXOR OCH PROV → SKOLLUNCH → IDAG, least important
+  first), taking each section down to its floor before the next is
+  touched. Each budget is applied through `budgetLines`: whole entries
+  while they fit in `budget-1` lines, then `"+N till"`, where N is the
+  hidden entries and the line itself counts against the budget. An entry
+  is never shown in part.
+- The floors are `minSectionLines` 2 and `minTodayLines` 3 (IDAG), or the
+  section's natural line count if it is smaller. Floors bound the budget,
+  not the visible lines. IDAG's "at least 3 visible lines" holds with the
+  current constants (the line room leaves IDAG ≥ 14 lines of budget), and
+  `TestLayoutSections` asserts it, so it fails if the constants change.
+- `ClockRect` and the weather band are fixed, and `lunchTop` is a
+  constant, so the sections only ever move below it. A partial refresh of
+  the clock keeps working however the sections move.
 - Other over-wide text (header, weather) is cut with `"…"` (`fitText`).
   Every region is drawn onto a clipped `SubImage` (header, content
   column, clock, weather), so nothing spills outside it; the weather can
@@ -72,9 +94,12 @@ panel driver comes later, behind the port in
   rotates the portrait frame by 90 degrees and maps partial-refresh rects
   (e.g. `ClockRect()`) to native coordinates (ADR-0004); the portrait
   renderer never rotates, so the PNG is the true mounted view.
-- When a section overflows with two-line entries, an even budget leaves
-  one line empty (lunch 4 → one entry + "+N till" = 3 lines), because an
-  entry is never cut to fill the gap.
+- A budget is not a line count, because an entry is never cut to fill the
+  gap. With two-line entries a budget of 2 shows only `"+N till"`, and
+  lowering the budget by one line can drop two visible lines (budget 5
+  shows two entries + `"+N till"` = 5 lines, budget 4 one entry +
+  `"+N till"` = 3). The trim loop checks the actual lines, so it may
+  stop with a line of room to spare.
 - x/image has two version thresholds, both read from the module cache:
   - v0.37.0–v0.45.0 declare `go 1.25.0`. Any of them makes `go mod tidy`
     rewrite our `go 1.25` directive, which is why we pin v0.36.0.

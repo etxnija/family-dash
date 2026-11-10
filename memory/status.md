@@ -445,3 +445,19 @@ Session-to-session progress log. Distinct from AGENTS.md (stable rules).
 - Docs only: no Go code or tests change in this task.
 
 **Run metrics:** 19 driver call(s), $5.1369, session 8c5df718-24dc-46e1-b48b-3a07490f94ba, cache read 3649921 / write 623177 / input 206 (share 85%)
+
+## 2026-11-10 — eink sections packed at render time with priority trimming
+
+- Replaced the fixed `todayTop`/`homeworkTop`/`upcomingTop` and the four `*LineBudget` constants with a pure `layoutSections` (in `render.go`): sections start at their natural line count, are packed from `sectionsTop` (= `lunchTop`) with `sectionHeight(lines)` + `sectionGap`, and while the last row + `bodyDescent` passes `contentBottom` the first section in `trimOrder` (KOMMANDE, LÄXOR, SKOLLUNCH, IDAG) above its floor (`minSectionLines` 2, `minTodayLines` 3, or its natural count if lower) loses one budget line via `budgetLines`. `*Rows` became `*Entries` + `sectionEntries`. Tests: layout-driven empty-state/containment/order/fit tests over full/empty/stress views, `TestLayoutSections_StressView` (expectations derived from the trim rule and `lineRoom`; currently 1 dish+"+19", IDAG 7+"+13", "+20" ×2 = 19 lines), and table-driven synthetic `TestLayoutSections` (fit, empty, mixed, staged overflows, IDAG floor, stress, determinism). `go vet`, `go test ./...`, `golangci-lint run` pass.
+
+## 2026-11-10 — eink section floor review fixes
+
+- Chose the budget rule: `minSectionLines`/`minTodayLines` bound a section's line budget, not its visible lines (`budgetLines` can show fewer, e.g. `"+20 till"` at floor 2). The `layout.go` floor comment, the `layoutSections` doc comment and the `eink-adapter.md` trim rule now say so. No code change in the trim loop.
+- Deviation from the task in the implementation only: the IDAG floor is a budget, not visible lines. With mixed 1/2-line entries a budget of 3 could show 2 lines, but `lineRoom` (20) leaves IDAG ≥ 14 budget even with every other section at its floor, so the IDAG floor is not reached with the current constants. The test follows the task: case (g) "extreme overflow trims IDAG last" asserts IDAG shows ≥ `minTodayLines` visible lines (`minTodayVisible`), so it fails if the constants change; the generic visible-line check in `checkSectionLines` stays. The `layout.go` floor comment and the `eink-adapter.md` trim rule say the floor is a budget and that the visible-line guarantee holds with the current constants.
+- Coverage confirmed: `TestRender_BoundsAndBinaryPixels` runs full, empty and stress via `layoutViews`; `checkSectionLines` compares every `TestLayoutSections` case's lines exactly, including `"+N till"` with N = entries − shown.
+- `TestLayoutSections` gains a mixed-length IDAG case (`mixedEntries`, alternating 1/2-line entries): budget 18 shows 11 entries + "+9 till" = 17 lines.
+- Task 2: IDAG and KOMMANDE DAGAR pad the time/weekday label to the section's widest label (over all rows, before trimming) via `maxLabelWidth`/`padRight` in `eventEntries`/`upcomingEntries`, so summaries and hanging indents align; tests cover IDAG/KOMMANDE alignment, no padding for one label length, and padding from a hidden row through `layoutSections`.
+- Task 3: `eink-adapter.md` now documents flowing sections (natural height from `lunchTop`, trim in `trimOrder` through `budgetLines` to floors 2/3), LÄXOR's naturally aligned initial beside the IDAG/KOMMANDE label padding, the fixed `ClockRect`/weather band/`lunchTop` that keep clock partial refresh working, and the budget-2 / two-line-drop gotcha; summary and `index.md` entry updated.
+
+
+**Run metrics:** 21 driver call(s), $4.6396, session 29960fa1-74c9-42c1-b95b-83203785deb9, cache read 3107025 / write 665785 / input 186 (share 82%)

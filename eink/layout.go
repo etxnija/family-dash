@@ -66,14 +66,18 @@ const (
 	// next section's rule.
 	sectionGap = 16
 
-	// lunchLineBudget, todayLineBudget, homeworkLineBudget and
-	// upcomingLineBudget limit each section. A budget counts body lines,
-	// not entries, and includes the "+N till" line that replaces the
-	// entries that don't fit.
-	lunchLineBudget    = 4
-	todayLineBudget    = 6
-	homeworkLineBudget = 5
-	upcomingLineBudget = 5
+	// minSectionLines and minTodayLines are the smallest line budget a
+	// section is trimmed to when the sections don't fit (see
+	// layoutSections): minTodayLines for IDAG, minSectionLines for the
+	// rest. A section with fewer lines than its floor is never trimmed.
+	// They bound the budget, not the visible lines: budgetLines can show
+	// fewer lines than its budget (a floor of 2 with two-line entries
+	// shows just "+N till"). IDAG's guarantee of at least minTodayLines
+	// visible lines holds with the current constants, because the line
+	// room leaves IDAG far more budget than its floor (checked by
+	// TestLayoutSections).
+	minSectionLines = 2
+	minTodayLines   = 3
 	// maxEntryLines is the most lines one entry wraps to.
 	maxEntryLines = 2
 
@@ -112,14 +116,27 @@ const (
 	// rule runs down to meet it at lunchTop.
 	bandBottom = max(clockY1, weatherBottom)
 
-	// lunchTop, todayTop, homeworkTop and upcomingTop are the Y of the rule
-	// above each section, stacked in that order. Each section has fixed
-	// room for its line budget, so positions don't move with the content.
-	lunchTop    = bandBottom + sectionGap
-	todayTop    = lunchTop + headingOffset + lunchLineBudget*rowHeight + sectionGap
-	homeworkTop = todayTop + headingOffset + todayLineBudget*rowHeight + sectionGap
-	upcomingTop = homeworkTop + headingOffset + homeworkLineBudget*rowHeight + sectionGap
+	// lunchTop is the Y of the first section's rule (SKOLLUNCH), where the
+	// vertical weather rule meets it. The other sections' tops are packed
+	// below it at render time (layoutSections).
+	lunchTop = bandBottom + sectionGap
+	// sectionsTop is the top of the area the sections are packed into; it
+	// runs down to contentBottom.
+	sectionsTop = lunchTop
 )
+
+// Section indexes, in draw order.
+const (
+	sectionLunch = iota
+	sectionToday
+	sectionHomework
+	sectionUpcoming
+	sectionCount
+)
+
+// trimOrder is the order sections are trimmed in when they don't fit,
+// least important first. Go has no array constants, so it is a var.
+var trimOrder = [sectionCount]int{sectionUpcoming, sectionHomework, sectionLunch, sectionToday}
 
 var (
 	screenRect  = image.Rect(0, 0, ScreenWidth, ScreenHeight)
@@ -143,6 +160,15 @@ func ClockRect() image.Rectangle {
 // is at top.
 func headingBaselineY(top int) int {
 	return top + headingOffset
+}
+
+// sectionHeight returns the distance from a section's rule to the
+// baseline of its last row, for a section of lines body lines. Sections fit
+// when the last section's top plus sectionHeight plus bodyDescent is
+// ≤ contentBottom; the next section's rule is sectionGap below that
+// baseline.
+func sectionHeight(lines int) int {
+	return headingOffset + lines*rowHeight
 }
 
 // firstRowBaselineY returns the baseline of the first row in the section
