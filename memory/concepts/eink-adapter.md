@@ -1,11 +1,11 @@
 ---
 type: component
-tags: [eink, prime, epaper, render, adapter, hexagonal, font, panel, port, pngpanel, epd, rotation, build-constraints, cable, refresh-loop, clock, partial, eink-loop, flags, sleep]
-summary: eink/ e-paper adapter — Panel port (Full/Partial/Sleep/Close) with three adapters (pngpanel PNG writer, linux/arm Waveshare 7.5" V2 epd driver, non-linux/arm epd stub), pure rotate.go (-cable left/right mapping, Rotate/RotateRect), driver call order and rotate_ms/refresh_ms logs, Partial primed with the last shown frame (primeBeforePartial: InitPart, DisplayPart previous, DisplayPart new); eink.Loop refresh loop behind -eink-loop (fetch every 30m/new day with 5m retry, full/partial/none by pixel diff around ClockRect, Sleep then single Close on SIGINT/SIGTERM, -eink-fetch-every/-eink-full-every/-eink-sleep; priming fixed the grainy partial after ~60 s Sleep in a Nov 2026 spike, not yet verified in the real binary on the panel); Stockholm view-model, 1-bit portrait 480x800 renderer (Go Mono, single column, clock/weather band, two-line wrapped entries, content-height sections trimmed by priority, ClockRect top/bottom on multiples of 8), plus verified driver facts and Nov 2026 spike timings.
+tags: [eink, prime, epaper, render, adapter, hexagonal, font, panel, port, pngpanel, epd, rotation, build-constraints, cable, refresh-loop, clock, partial, eink-loop, flags, sleep, feed-notice]
+summary: eink/ e-paper adapter — Panel port (Full/Partial/Sleep/Close) with three adapters (pngpanel PNG writer, linux/arm Waveshare 7.5" V2 epd driver, non-linux/arm epd stub), pure rotate.go (-cable left/right mapping, Rotate/RotateRect), driver call order and rotate_ms/refresh_ms logs, Partial primed with the last shown frame (primeBeforePartial: InitPart, DisplayPart previous, DisplayPart new); eink.Loop refresh loop behind -eink-loop (fetch every 30m/new day with 5m retry, full/partial/none by pixel diff around ClockRect, Sleep then single Close on SIGINT/SIGTERM, -eink-fetch-every/-eink-full-every/-eink-sleep; priming fixed the grainy partial after ~60 s Sleep in a Nov 2026 spike, not yet verified in the real binary on the panel); Stockholm view-model, 1-bit portrait 480x800 renderer (Go Mono, single column, clock/weather band, two-line wrapped entries, content-height sections trimmed by priority, reserved bottom feed-notice row, ClockRect top/bottom on multiples of 8), plus verified driver facts and Nov 2026 spike timings.
 links: [docs/arch/adr/0002-dual-display-adapters-over-shared-interface.md, docs/arch/adr/0003-eink-panel-port-and-refresh-policy.md, docs/arch/adr/0004-portrait-frame-rotated-by-panel-adapter.md, docs/raspberry-pi-setup.md, dashboard-page.md, composition-root.md, eink-view.md]
-updated: 2026-11-10 (Partial priming documented with the Nov 2026 spike findings and timings)
+updated: 2026-11-10 (reserved bottom row for the feed notice)
 generated: { by: worker, at: 2026-11-10T00:00:00Z }
-verified: [{ by: "human", at: 2026-11-10 }, { by: "human", at: 2026-11-10 }, { by: "human", at: 2026-11-10 }, { by: "human", at: 2026-11-10 }, { by: "human", at: 2026-11-10 }, { by: "human", at: 2026-11-10 }]
+verified: [{ by: "human", at: 2026-11-10 }, { by: "human", at: 2026-11-10 }, { by: "human", at: 2026-11-10 }, { by: "human", at: 2026-11-10 }, { by: "human", at: 2026-11-10 }, { by: "human", at: 2026-11-10 }, { by: "human", at: 2026-11-10 }]
 ---
 
 # E-paper Adapter (`eink/`)
@@ -70,8 +70,23 @@ below).
   `layoutSections` (pure, in `render.go`) from `sectionEntries`
   (`lunchEntries`, `eventEntries`, `homeworkEntries`, `upcomingEntries`),
   so they move with content. The sections fit when the last baseline
-  plus `bodyDescent` is ≤ `contentBottom` (20 body lines in total today).
-- When the total exceeds the area down to `contentBottom`,
+  plus `bodyDescent` is ≤ `contentBottom` (20 body lines in total today; 19 with a feed notice).
+- Feed notice: when `View.FeedNotice` is non-empty, the last body row of
+  the content column (`feedNoticeTop` = `contentBottom - rowHeight` down
+  to `contentBottom`) is reserved for it. `Render` passes `feedNoticeTop`
+  instead of `contentBottom` as the `bottom` to `layoutSections` (and so
+  to `sectionsFit`), so the sections pack and trim one line earlier, and
+  draws `fitText(bodyFace, notice, content width)` at `contentX0`,
+  `feedNoticeBaselineY` (`contentBottom - bodyDescent`): one row, cut
+  with `"…"` when too long. Without a notice the sections use
+  `contentBottom` and the frame is pixel-identical to before. There is no
+  rule above the notice: the body ascent (15 px) puts its glyph tops at
+  y=765 while the sections may reach y=764, so a rule would not fit
+  cleanly. The loop needs no change: a notice appearing or disappearing
+  changes pixels outside `ClockRect()`, so the pixel diff picks a full
+  refresh (`"content changed"`).
+- When the total exceeds the area down to `bottom` (`contentBottom`, or
+  `feedNoticeTop` with a notice),
   `layoutSections` lowers one line of budget at a time in `trimOrder`
   (KOMMANDE DAGAR → LÄXOR OCH PROV → SKOLLUNCH → IDAG, least important
   first), taking each section down to its floor before the next is

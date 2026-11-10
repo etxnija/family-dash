@@ -255,6 +255,7 @@ type dashboardData struct {
 	Today, Homework, Upcoming []dashboard.Event
 	Owners, Lunch             []string
 	Weather                   *dashboard.WeatherReading
+	Problems                  []dashboard.FeedProblem
 }
 
 // fetchDashboard collects events via collector, the lunch menu via
@@ -263,7 +264,8 @@ type dashboardData struct {
 // configured; a failing lunch or weather fetch is logged and left empty.
 func fetchDashboard(ctx context.Context, collector *dashboard.Collector, lunchSource dashboard.LunchSource, weatherSource dashboard.WeatherSource, now time.Time) dashboardData {
 	data := dashboardData{Owners: collector.Owners()}
-	data.Today, data.Homework, data.Upcoming = collector.Collect(ctx, now)
+	c := collector.Collect(ctx, now)
+	data.Today, data.Homework, data.Upcoming, data.Problems = c.Today, c.Homework, c.Upcoming, c.Problems
 
 	if lunchSource != nil {
 		menu, err := lunchSource.Lunch(ctx)
@@ -318,7 +320,7 @@ func handleIndex(collector *dashboard.Collector, lunchSource dashboard.LunchSour
 func showOnce(ctx context.Context, panel eink.Panel, collector *dashboard.Collector, lunchSource dashboard.LunchSource, weatherSource dashboard.WeatherSource, now time.Time) error {
 	var errs []error
 	d := fetchDashboard(ctx, collector, lunchSource, weatherSource, now)
-	view, err := eink.NewView(d.Today, d.Homework, d.Upcoming, d.Owners, d.Lunch, d.Weather, now)
+	view, err := eink.NewView(d.Today, d.Homework, d.Upcoming, d.Owners, d.Lunch, d.Weather, d.Problems, now)
 	if err != nil {
 		errs = append(errs, fmt.Errorf("building e-paper view: %w", err))
 	} else if err := panel.Full(eink.Render(view)); err != nil {
@@ -340,7 +342,7 @@ func showOnce(ctx context.Context, panel eink.Panel, collector *dashboard.Collec
 func runLoop(ctx context.Context, panel eink.Panel, clock eink.Clock, collector *dashboard.Collector, lunchSource dashboard.LunchSource, weatherSource dashboard.WeatherSource, settings eink.LoopSettings) error {
 	views := func(ctx context.Context, now time.Time) (eink.View, error) {
 		d := fetchDashboard(ctx, collector, lunchSource, weatherSource, now)
-		return eink.NewView(d.Today, d.Homework, d.Upcoming, d.Owners, d.Lunch, d.Weather, now)
+		return eink.NewView(d.Today, d.Homework, d.Upcoming, d.Owners, d.Lunch, d.Weather, d.Problems, now)
 	}
 	return eink.NewLoop(panel, views, clock, settings).Run(ctx)
 }

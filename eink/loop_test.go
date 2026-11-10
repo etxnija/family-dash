@@ -84,7 +84,7 @@ func (s *loopSource) fetch(_ context.Context, now time.Time) (View, error) {
 
 func mustView(t *testing.T, now time.Time, lunch ...string) View {
 	t.Helper()
-	view, err := NewView(nil, nil, nil, []string{"Kaj"}, lunch, nil, now)
+	view, err := NewView(nil, nil, nil, []string{"Kaj"}, lunch, nil, nil, now)
 	if err != nil {
 		t.Fatalf("NewView: %v", err)
 	}

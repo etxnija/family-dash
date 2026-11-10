@@ -57,7 +57,7 @@ func TestNewView_Header(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			view, err := NewView(nil, nil, nil, tt.owners, nil, nil, tt.now)
+			view, err := NewView(nil, nil, nil, tt.owners, nil, nil, nil, tt.now)
 			if err != nil {
 				t.Fatalf("NewView: %v", err)
 			}
@@ -106,7 +106,7 @@ func TestNewView_Events(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			view, err := NewView(tt.events, nil, nil, nil, nil, nil, testNow)
+			view, err := NewView(tt.events, nil, nil, nil, nil, nil, nil, testNow)
 			if err != nil {
 				t.Fatalf("NewView: %v", err)
 			}
@@ -163,7 +163,7 @@ func TestNewView_Homework(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			view, err := NewView(nil, tt.events, nil, tt.owners, nil, nil, testNow)
+			view, err := NewView(nil, tt.events, nil, tt.owners, nil, nil, nil, testNow)
 			if err != nil {
 				t.Fatalf("NewView: %v", err)
 			}
@@ -208,7 +208,7 @@ func TestNewView_Upcoming(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			view, err := NewView(nil, nil, tt.events, nil, nil, nil, testNow)
+			view, err := NewView(nil, nil, tt.events, nil, nil, nil, nil, testNow)
 			if err != nil {
 				t.Fatalf("NewView: %v", err)
 			}
@@ -248,7 +248,7 @@ func TestNewView_Weather(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			view, err := NewView(nil, nil, nil, nil, nil, tt.weather, testNow)
+			view, err := NewView(nil, nil, nil, nil, nil, tt.weather, nil, testNow)
 			if err != nil {
 				t.Fatalf("NewView: %v", err)
 			}
@@ -270,7 +270,7 @@ func TestNewView_Lunch(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			view, err := NewView(nil, nil, nil, nil, tt.lunch, nil, testNow)
+			view, err := NewView(nil, nil, nil, nil, tt.lunch, nil, nil, testNow)
 			if err != nil {
 				t.Fatalf("NewView: %v", err)
 			}
@@ -316,6 +316,56 @@ func TestEmptyStatesAreSet(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			if tt.text == "" {
 				t.Errorf("empty-state text for %s is empty", tt.name)
+			}
+		})
+	}
+}
+
+func TestNewView_FeedNotice(t *testing.T) {
+	missing := func(owner string) dashboard.FeedProblem { return dashboard.FeedProblem{Owner: owner} }
+	stale := func(owner string, age time.Duration) dashboard.FeedProblem {
+		return dashboard.FeedProblem{Owner: owner, Stale: true, LastSuccess: testNow.Add(-age)}
+	}
+	tests := []struct {
+		name     string
+		problems []dashboard.FeedProblem
+		want     string
+	}{
+		{name: "none", want: ""},
+		{name: "one missing", problems: []dashboard.FeedProblem{missing("Kaj")}, want: "Kalender saknas: K"},
+		{name: "one stale at 3 h", problems: []dashboard.FeedProblem{stale("Kaj", 3*time.Hour+20*time.Minute)}, want: "Kalender gammal: K (3 h)"},
+		{name: "stale at 59 min", problems: []dashboard.FeedProblem{stale("Kaj", 59*time.Minute+59*time.Second)}, want: "Kalender gammal: K (59 min)"},
+		{name: "stale at 20 s", problems: []dashboard.FeedProblem{stale("Kaj", 20*time.Second)}, want: "Kalender gammal: K (1 min)"},
+		{name: "stale at exactly 1 h", problems: []dashboard.FeedProblem{stale("Kaj", time.Hour)}, want: "Kalender gammal: K (1 h)"},
+		{
+			name:     "both kinds, missing first",
+			problems: []dashboard.FeedProblem{stale("Lillian", 40*time.Minute), missing("Kaj")},
+			want:     "Kalender saknas: K · Kalender gammal: L (40 min)",
+		},
+		{
+			name: "several owners per kind",
+			problems: []dashboard.FeedProblem{
+				missing("Kaj"), stale("Kaj", 3*time.Hour), missing("Lillian"), stale("Lillian", 40*time.Minute),
+			},
+			want: "Kalender saknas: K, L · Kalender gammal: K (3 h), L (40 min)",
+		},
+		{
+			name: "the same owner twice uses the oldest age",
+			problems: []dashboard.FeedProblem{
+				missing("lillian"), stale("Kaj", 2*time.Hour), missing("lillian"), stale("Kaj", 5*time.Hour), stale("Kaj", time.Hour),
+			},
+			want: "Kalender saknas: L · Kalender gammal: K (5 h)",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			view, err := NewView(nil, nil, nil, nil, nil, nil, tt.problems, testNow)
+			if err != nil {
+				t.Fatalf("NewView: %v", err)
+			}
+			if view.FeedNotice != tt.want {
+				t.Errorf("FeedNotice = %q, want %q", view.FeedNotice, tt.want)
 			}
 		})
 	}

@@ -3,6 +3,7 @@ package dashboard
 import (
 	"context"
 	"log/slog"
+	"sync"
 	"time"
 )
 
@@ -19,11 +20,23 @@ type NamedSource struct {
 	Source EventSource
 }
 
+// cacheEntry holds a source's last successfully fetched events and the now
+// of that fetch; at is zero if the source has never succeeded.
+type cacheEntry struct {
+	events []Event
+	at     time.Time
+}
+
 // Collector fetches events from a fixed set of owned sources and derives the
-// dashboard's event views from the merged result.
+// dashboard's event views from the merged result. It caches each source's
+// last successful fetch so a failing source can be served stale for up to
+// StaleLimit. It is safe for concurrent use.
 type Collector struct {
 	sources []source
 	owners  []string
+
+	mu    sync.Mutex
+	cache []cacheEntry // parallel to sources, guarded by mu
 }
 
 // NewCollector builds a Collector from sources, deriving the distinct list of
@@ -40,7 +53,7 @@ func NewCollector(sources []NamedSource) *Collector {
 		seen[s.Owner] = true
 		owners = append(owners, s.Owner)
 	}
-	return &Collector{sources: internal, owners: owners}
+	return &Collector{sources: internal, owners: owners, cache: make([]cacheEntry, len(internal))}
 }
 
 // Owners returns the distinct owner names, in insertion order.
@@ -50,28 +63,51 @@ func (c *Collector) Owners() []string {
 
 // Collect fetches events from every held source, tags them with their
 // owner, merges them, and derives the today/homework/upcoming views
-// relative to now. A source that fails to fetch is logged and skipped; it
-// does not prevent other sources from contributing events.
-func (c *Collector) Collect(ctx context.Context, now time.Time) (today, homework, upcoming []Event) {
+// relative to now. A successful fetch replaces the source's cache. A source
+// that fails is logged and reported in Problems: if its last success is at
+// most StaleLimit before now its cached events are used (Stale), otherwise
+// it contributes no events. A failing source never prevents other sources
+// from contributing events.
+func (c *Collector) Collect(ctx context.Context, now time.Time) Collection {
 	var events []Event
-	for _, s := range c.sources {
+	var problems []FeedProblem
+	for i, s := range c.sources {
 		fetched, err := s.source.Events(ctx)
-		if err != nil {
-			slog.Error("fetching events", "source", s.owner, "error", err)
+
+		c.mu.Lock()
+		entry := c.cache[i]
+		if err == nil {
+			entry = cacheEntry{events: fetched, at: now}
+			c.cache[i] = entry
+		}
+		c.mu.Unlock()
+
+		if err == nil {
+			slog.Info("fetched events", "source", s.owner, "count", len(fetched))
+			events = append(events, WithOwner(fetched, s.owner)...)
 			continue
 		}
-		slog.Info("fetched events", "source", s.owner, "count", len(fetched))
-		events = append(events, WithOwner(fetched, s.owner)...)
+
+		stale := !entry.at.IsZero() && now.Sub(entry.at) <= StaleLimit
+		lastSuccess := ""
+		if !entry.at.IsZero() {
+			lastSuccess = entry.at.Format(time.RFC3339)
+		}
+		slog.Error("fetching events", "source", s.owner, "error", err, "serving_stale", stale, "last_success", lastSuccess)
+		problems = append(problems, FeedProblem{Owner: s.owner, Stale: stale, LastSuccess: entry.at})
+		if stale {
+			events = append(events, WithOwner(entry.events, s.owner)...)
+		}
 	}
 
-	today = TodayEvents(events, now)
+	today := TodayEvents(events, now)
 	slog.Info("filtered to today", "count", len(today))
 
-	homework = HomeworkEvents(events, now)
+	homework := HomeworkEvents(events, now)
 	slog.Info("filtered to homework", "count", len(homework))
 
-	upcoming = UpcomingEvents(events, now)
+	upcoming := UpcomingEvents(events, now)
 	slog.Info("filtered to upcoming", "count", len(upcoming))
 
-	return today, homework, upcoming
+	return Collection{Today: today, Homework: homework, Upcoming: upcoming, Problems: problems}
 }

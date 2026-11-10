@@ -3,9 +3,9 @@ type: component
 tags: [main, config, composition-root, multi-source, cmd, http, lunch, weather, eink, png, epd, flags, loop, signal]
 summary: cmd/family-dashboard main() — JSON sources+school+location config, adapter construction at startup, dashboard.Collector/LunchSource/WeatherSource wiring, fetchDashboard shared by the HTML handler and the one-shot showOnce helper (any eink.Panel, always Sleep+Close) behind -eink-png (pngpanel) and -eink-panel -cable left|right (epd); -eink-loop runs eink.Loop on either panel via runLoop under signal.NotifyContext; parseFlags validates flags (mutually exclusive eink modes, loop-flag rules, exit 2).
 links: [docs/arch/adr/0001-config-path-via-required-flag.md, webcal-adapter.md, collector.md, skolmaten-adapter.md, smhi-adapter.md, eink-adapter.md]
-updated: 2026-11-10 (-eink-loop docs: loop flag rules, runLoop, SIGINT/SIGTERM exit codes)
+updated: 2026-11-10 (dashboardData.Problems from Collection)
 generated: { by: worker, at: 2026-09-18T00:00:00Z }
-verified: [{ by: "human", at: 2026-09-18 }, { by: "human", at: 2026-09-18 }, { by: "human", at: 2026-09-18 }, { by: "human", at: 2026-09-18 }, { by: "human", at: 2026-09-21 }, { by: "human", at: 2026-09-22 }, { by: "human", at: 2026-11-10 }, { by: "human", at: 2026-11-10 }, { by: "human", at: 2026-11-10 }]
+verified: [{ by: "human", at: 2026-09-18 }, { by: "human", at: 2026-09-18 }, { by: "human", at: 2026-09-18 }, { by: "human", at: 2026-09-18 }, { by: "human", at: 2026-09-21 }, { by: "human", at: 2026-09-22 }, { by: "human", at: 2026-11-10 }, { by: "human", at: 2026-11-10 }, { by: "human", at: 2026-11-10 }, { by: "human", at: 2026-11-10 }]
 ---
 
 # Composition Root (`cmd/family-dashboard`)
@@ -110,7 +110,10 @@ merging, and deriving today/homework/upcoming views all live in
   `Owners`, then the nil-safe lunch and weather fetches (same
   log-and-continue `slog.Error` messages). One `now` is threaded through
   `Collect`, `Weather`, and the view constructor so a render sees a single
-  consistent instant. `handleIndex` calls it with `r.Context()`; `showOnce`
+  consistent instant. `dashboardData.Problems` is copied from the
+  `Collection`'s `Problems` (see [collector.md](collector.md)); nothing
+  renders it yet — `web.NewPageData` and `eink.NewView` ignore it.
+  `handleIndex` calls it with `r.Context()`; `showOnce`
   (both eink modes) calls it with `context.Background()`. New output targets should
   reuse it rather than re-fetch inline.
 - `-eink-png <path>` (optional) switches `main()` into one-shot export mode

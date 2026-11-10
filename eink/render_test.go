@@ -31,7 +31,7 @@ func fullView() View {
 
 func emptyView(t *testing.T) View {
 	t.Helper()
-	v, err := NewView(nil, nil, nil, nil, nil, nil, testNow)
+	v, err := NewView(nil, nil, nil, nil, nil, nil, nil, testNow)
 	if err != nil {
 		t.Fatalf("NewView: %v", err)
 	}
@@ -111,7 +111,7 @@ var sectionNames = [sectionCount]string{"lunch", "idag", "läxor", "kommande"}
 
 // layoutFor returns the section layout Render uses for v.
 func layoutFor(v View) [sectionCount]sectionLayout {
-	return layoutSections(sectionEntries(v, contentRect.Dx()))
+	return layoutSections(sectionEntries(v, contentRect.Dx()), contentBottom)
 }
 
 // layoutViews returns the full, empty and stress views.
@@ -390,8 +390,8 @@ func TestLayoutSections(t *testing.T) {
 // shows the expected lines and packs the sections correctly, and returns it.
 func checkLayoutSections(t *testing.T, entries [sectionCount][][]string, shown [sectionCount]int) [sectionCount]sectionLayout {
 	t.Helper()
-	layout := layoutSections(entries)
-	if again := layoutSections(entries); !reflect.DeepEqual(layout, again) {
+	layout := layoutSections(entries, contentBottom)
+	if again := layoutSections(entries, contentBottom); !reflect.DeepEqual(layout, again) {
 		t.Fatalf("layoutSections is not deterministic: %v then %v", layout, again)
 	}
 
@@ -696,7 +696,7 @@ func TestLayoutSections_PaddingFromHiddenEntry(t *testing.T) {
 	entries[sectionLunch] = lunchEntries([]string{"Köttbullar", "Gröt"}, width)
 	entries[sectionToday] = eventEntries([]EventRow{{Time: "07:15", Owner: "Kaj", Summary: "Tandläkare"}}, width)
 	entries[sectionUpcoming] = upcomingEntries(upcoming, width)
-	layout := layoutSections(entries)
+	layout := layoutSections(entries, contentBottom)
 
 	lines := layout[sectionUpcoming].lines
 	if len(lines) == 0 || !strings.HasPrefix(lines[len(lines)-1], "+") {
@@ -986,4 +986,78 @@ func countBlack(img *image.Gray, r image.Rectangle) int {
 		}
 	}
 	return n
+}
+
+// feedNoticeRow is the reserved feed notice row inside the content column.
+var feedNoticeRow = image.Rect(contentX0, feedNoticeTop, contentX1, contentBottom)
+
+func TestRender_FeedNoticeDrawn(t *testing.T) {
+	v := fullView()
+	v.FeedNotice = "Kalender saknas: K"
+	if countBlack(Render(v), feedNoticeRow) == 0 {
+		t.Errorf("no black pixels in the feed notice row %v", feedNoticeRow)
+	}
+}
+
+func TestRender_FeedNoticeRowOnlyWithNotice(t *testing.T) {
+	tests := []struct {
+		name      string
+		notice    string
+		wantBlack bool
+	}{
+		{name: "no notice", notice: "", wantBlack: false},
+		{name: "notice", notice: "Kalender gammal: L (40 min)", wantBlack: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			v := emptyView(t)
+			v.FeedNotice = tt.notice
+			if n := countBlack(Render(v), feedNoticeRow); (n > 0) != tt.wantBlack {
+				t.Errorf("%d black pixels in %v, want black = %v", n, feedNoticeRow, tt.wantBlack)
+			}
+		})
+	}
+}
+
+func TestLayoutSections_FeedNoticeBottom(t *testing.T) {
+	descent := bodyFace.Metrics().Descent.Ceil()
+	layout := layoutSections(sectionEntries(stressView(), contentRect.Dx()), feedNoticeTop)
+	for i, name := range sectionNames {
+		t.Run(name, func(t *testing.T) {
+			limit := feedNoticeTop
+			if i+1 < sectionCount {
+				limit = layout[i+1].top
+			}
+			lastBaseline := firstRowBaselineY(layout[i].top) + (sectionLines(layout[i])-1)*rowHeight
+			if bottom := lastBaseline + descent; bottom > limit {
+				t.Errorf("%s last line reaches y=%d, want ≤ %d", name, bottom, limit)
+			}
+		})
+	}
+}
+
+func TestRender_LongFeedNoticeCut(t *testing.T) {
+	notice := "Kalender gammal: " + strings.Repeat("K (23 h), L (40 min), ", 10)
+	width := contentRect.Dx()
+
+	fitted := fitText(bodyFace, notice, width)
+	if !strings.HasSuffix(fitted, ellipsis) {
+		t.Errorf("fitText = %q, want it to end in %q", fitted, ellipsis)
+	}
+	if w := measure(bodyFace, fitted); w > width {
+		t.Errorf("fitText = %q is %dpx wide, want ≤ %d", fitted, w, width)
+	}
+
+	v := stressView()
+	v.FeedNotice = notice
+	inner := image.Rect(borderThickness, borderThickness, ScreenWidth-borderThickness, ScreenHeight-borderThickness)
+	rightMargin := image.Rect(contentX1, feedNoticeTop, inner.Max.X, contentBottom)
+	img := Render(v)
+	if n := countBlack(img, rightMargin); n != 0 {
+		t.Errorf("%d black pixels in the right margin %v, want none", n, rightMargin)
+	}
+	if countBlack(img, feedNoticeRow) == 0 {
+		t.Errorf("no black pixels in the feed notice row %v", feedNoticeRow)
+	}
 }

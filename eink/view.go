@@ -8,6 +8,7 @@ package eink
 import (
 	"fmt"
 	"math"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -33,6 +34,15 @@ const (
 
 	noTemperature = "—°"
 	allDay        = "heldag"
+
+	// Feed notice texts: the prefixes of its missing and stale parts, the
+	// separator between parts and owners, and the stale age formats.
+	feedMissingPrefix   = "Kalender saknas: "
+	feedStalePrefix     = "Kalender gammal: "
+	feedPartSeparator   = " · "
+	feedOwnerSeparator  = ", "
+	feedAgeMinuteFormat = "%d min"
+	feedAgeHourFormat   = "%d h"
 )
 
 // View holds everything the e-paper renderer draws, as ready-to-draw
@@ -47,6 +57,9 @@ type View struct {
 	Events    []EventRow
 	Homework  []HomeworkGroup
 	Upcoming  []UpcomingRow
+	// FeedNotice is one ready-to-draw row about failing calendar feeds,
+	// drawn at the bottom of the frame; empty when every feed is fine.
+	FeedNotice string
 }
 
 // WeatherView is the weather panel: a large temperature and the lines
@@ -89,8 +102,9 @@ type UpcomingRow struct {
 }
 
 // NewView builds a View for events, homeworkEvents, upcomingEvents, owners,
-// lunch, weather, and now, converting all times to Europe/Stockholm.
-func NewView(events, homeworkEvents, upcomingEvents []dashboard.Event, owners []string, lunch []string, weather *dashboard.WeatherReading, now time.Time) (View, error) {
+// lunch, weather, problems, and now, converting all times to
+// Europe/Stockholm.
+func NewView(events, homeworkEvents, upcomingEvents []dashboard.Event, owners []string, lunch []string, weather *dashboard.WeatherReading, problems []dashboard.FeedProblem, now time.Time) (View, error) {
 	loc, err := time.LoadLocation("Europe/Stockholm")
 	if err != nil {
 		return View{}, err
@@ -109,6 +123,8 @@ func NewView(events, homeworkEvents, upcomingEvents []dashboard.Event, owners []
 		Events:    buildEventRows(events, loc),
 		Homework:  buildHomeworkGroups(homeworkEvents, owners, localNow, loc),
 		Upcoming:  buildUpcomingRows(upcomingEvents, loc),
+
+		FeedNotice: buildFeedNotice(problems, now),
 	}, nil
 }
 
@@ -223,6 +239,57 @@ func buildUpcomingRows(events []dashboard.Event, loc *time.Location) []UpcomingR
 		})
 	}
 	return rows
+}
+
+// buildFeedNotice returns the feed notice for problems as of now, e.g.
+// "Kalender saknas: K · Kalender gammal: L (3 h)", or "" when there are no
+// problems. Each part lists every owner's initial once, in first-seen
+// order; a stale owner shows the age of its oldest stale source. now need
+// not be in Stockholm time: only durations (now - LastSuccess) are used.
+func buildFeedNotice(problems []dashboard.FeedProblem, now time.Time) string {
+	var missing, stale []string
+	oldest := make(map[string]time.Duration)
+	for _, p := range problems {
+		if !p.Stale {
+			if !slices.Contains(missing, p.Owner) {
+				missing = append(missing, p.Owner)
+			}
+			continue
+		}
+		age := now.Sub(p.LastSuccess)
+		if prev, seen := oldest[p.Owner]; !seen {
+			stale = append(stale, p.Owner)
+			oldest[p.Owner] = age
+		} else {
+			oldest[p.Owner] = max(prev, age)
+		}
+	}
+
+	var parts []string
+	if len(missing) > 0 {
+		initials := make([]string, 0, len(missing))
+		for _, owner := range missing {
+			initials = append(initials, initial(owner))
+		}
+		parts = append(parts, feedMissingPrefix+strings.Join(initials, feedOwnerSeparator))
+	}
+	if len(stale) > 0 {
+		ages := make([]string, 0, len(stale))
+		for _, owner := range stale {
+			ages = append(ages, initial(owner)+" ("+feedAge(oldest[owner])+")")
+		}
+		parts = append(parts, feedStalePrefix+strings.Join(ages, feedOwnerSeparator))
+	}
+	return strings.Join(parts, feedPartSeparator)
+}
+
+// feedAge formats age rounded down: "N min" (at least 1) under one hour,
+// otherwise "N h".
+func feedAge(age time.Duration) string {
+	if age < time.Hour {
+		return fmt.Sprintf(feedAgeMinuteFormat, max(int(age/time.Minute), 1))
+	}
+	return fmt.Sprintf(feedAgeHourFormat, int(age/time.Hour))
 }
 
 // eventTime returns e's local start time as "15:04", or "heldag" for an

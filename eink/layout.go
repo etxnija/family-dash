@@ -121,8 +121,17 @@ const (
 	// below it at render time (layoutSections).
 	lunchTop = bandBottom + sectionGap
 	// sectionsTop is the top of the area the sections are packed into; it
-	// runs down to contentBottom.
+	// runs down to contentBottom, or to feedNoticeTop when there is a feed
+	// notice.
 	sectionsTop = lunchTop
+
+	// feedNoticeTop is the top of the body row reserved at the bottom of
+	// the content column for the feed notice; when there is one, the
+	// sections fit above it instead of above contentBottom.
+	feedNoticeTop = contentBottom - rowHeight
+	// feedNoticeBaselineY is the feed notice's baseline, so its descent
+	// ends at contentBottom.
+	feedNoticeBaselineY = contentBottom - bodyDescent
 )
 
 // Section indexes, in draw order.
@@ -165,8 +174,8 @@ func headingBaselineY(top int) int {
 // sectionHeight returns the distance from a section's rule to the
 // baseline of its last row, for a section of lines body lines. Sections fit
 // when the last section's top plus sectionHeight plus bodyDescent is
-// ≤ contentBottom; the next section's rule is sectionGap below that
-// baseline.
+// ≤ the bottom given to layoutSections (contentBottom or feedNoticeTop);
+// the next section's rule is sectionGap below that baseline.
 func sectionHeight(lines int) int {
 	return headingOffset + lines*rowHeight
 }

@@ -242,16 +242,27 @@ func (s stubWeatherSource) Weather(context.Context, time.Time) (dashboard.Weathe
 	return s.reading, s.err
 }
 
+type stubEventSource struct {
+	err error
+}
+
+func (s stubEventSource) Events(context.Context) ([]dashboard.Event, error) {
+	return nil, s.err
+}
+
 func TestFetchDashboard(t *testing.T) {
 	now := time.Date(2026, 11, 10, 8, 0, 0, 0, time.UTC)
 	fetchErr := errors.New("upstream down")
 
 	tests := []struct {
-		name        string
-		lunch       dashboard.LunchSource
-		weather     dashboard.WeatherSource
-		wantLunch   []string
-		wantWeather *dashboard.WeatherReading
+		name         string
+		sources      []dashboard.NamedSource
+		lunch        dashboard.LunchSource
+		weather      dashboard.WeatherSource
+		wantOwners   []string
+		wantLunch    []string
+		wantWeather  *dashboard.WeatherReading
+		wantProblems []string
 	}{
 		{
 			name: "no lunch or weather source configured",
@@ -268,32 +279,56 @@ func TestFetchDashboard(t *testing.T) {
 			wantLunch:   []string{"Fiskgratäng", "Linsgryta"},
 			wantWeather: &dashboard.WeatherReading{Temperature: 4.5, LowTemperature: 1, HighTemperature: 6},
 		},
+		{
+			name: "a failing calendar source is reported in Problems",
+			sources: []dashboard.NamedSource{
+				{Owner: "Alva", Source: stubEventSource{}},
+				{Owner: "Bo", Source: stubEventSource{err: errors.New("http 410")}},
+			},
+			wantOwners:   []string{"Alva", "Bo"},
+			wantProblems: []string{"Bo"},
+		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := fetchDashboard(context.Background(), dashboard.NewCollector(nil), tt.lunch, tt.weather, now)
+			got := fetchDashboard(context.Background(), dashboard.NewCollector(tt.sources), tt.lunch, tt.weather, now)
 
-			if len(got.Today) != 0 || len(got.Homework) != 0 || len(got.Upcoming) != 0 || len(got.Owners) != 0 {
-				t.Errorf("fetchDashboard() events/owners = %+v, want empty", got)
+			if len(got.Today) != 0 || len(got.Homework) != 0 || len(got.Upcoming) != 0 {
+				t.Errorf("fetchDashboard() events = %+v, want empty", got)
 			}
-			if len(got.Lunch) != len(tt.wantLunch) {
-				t.Fatalf("fetchDashboard() Lunch = %v, want %v", got.Lunch, tt.wantLunch)
+			if !slices.Equal(got.Owners, tt.wantOwners) {
+				t.Errorf("fetchDashboard() Owners = %v, want %v", got.Owners, tt.wantOwners)
 			}
-			for i := range tt.wantLunch {
-				if got.Lunch[i] != tt.wantLunch[i] {
-					t.Errorf("fetchDashboard() Lunch[%d] = %q, want %q", i, got.Lunch[i], tt.wantLunch[i])
-				}
+			if gotProblems := problemOwners(got.Problems); !slices.Equal(gotProblems, tt.wantProblems) {
+				t.Errorf("fetchDashboard() Problems owners = %v, want %v", gotProblems, tt.wantProblems)
 			}
-			switch {
-			case tt.wantWeather == nil && got.Weather != nil:
-				t.Errorf("fetchDashboard() Weather = %+v, want nil", *got.Weather)
-			case tt.wantWeather != nil && got.Weather == nil:
-				t.Errorf("fetchDashboard() Weather = nil, want %+v", *tt.wantWeather)
-			case tt.wantWeather != nil && *got.Weather != *tt.wantWeather:
-				t.Errorf("fetchDashboard() Weather = %+v, want %+v", *got.Weather, *tt.wantWeather)
+			if !slices.Equal(got.Lunch, tt.wantLunch) {
+				t.Errorf("fetchDashboard() Lunch = %q, want %q", got.Lunch, tt.wantLunch)
 			}
+			assertWeather(t, got.Weather, tt.wantWeather)
 		})
+	}
+}
+
+// problemOwners returns the Owner of each problem, in order.
+func problemOwners(problems []dashboard.FeedProblem) []string {
+	var owners []string
+	for _, p := range problems {
+		owners = append(owners, p.Owner)
+	}
+	return owners
+}
+
+func assertWeather(t *testing.T, got, want *dashboard.WeatherReading) {
+	t.Helper()
+	switch {
+	case want == nil && got != nil:
+		t.Errorf("fetchDashboard() Weather = %+v, want nil", *got)
+	case want != nil && got == nil:
+		t.Errorf("fetchDashboard() Weather = nil, want %+v", *want)
+	case want != nil && *got != *want:
+		t.Errorf("fetchDashboard() Weather = %+v, want %+v", *got, *want)
 	}
 }
 

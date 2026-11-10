@@ -72,11 +72,18 @@ func Render(v View) *image.Gray {
 	drawWeather(subImage(img, weatherRect), v.Weather)
 
 	content := subImage(img, contentRect)
-	layout := layoutSections(sectionEntries(v, content.Bounds().Dx()))
+	bottom := contentBottom
+	if v.FeedNotice != "" {
+		bottom = feedNoticeTop
+	}
+	layout := layoutSections(sectionEntries(v, content.Bounds().Dx()), bottom)
 	drawSection(content, layout[sectionLunch].top, headingLunch, layout[sectionLunch].lines, emptyLunch)
 	drawSection(content, layout[sectionToday].top, headingToday, layout[sectionToday].lines, emptyToday)
 	drawSection(content, layout[sectionHomework].top, headingHomework, layout[sectionHomework].lines, emptyHomework)
 	drawSection(content, layout[sectionUpcoming].top, headingUpcoming, layout[sectionUpcoming].lines, emptyUpcoming)
+	if v.FeedNotice != "" {
+		drawText(content, bodyFace, contentX0, feedNoticeBaselineY, fitText(bodyFace, v.FeedNotice, content.Bounds().Dx()))
+	}
 
 	threshold(img)
 	return img
@@ -225,7 +232,8 @@ type sectionLayout struct {
 }
 
 // layoutSections chooses each section's visible lines and packs the
-// sections below sectionsTop so they fit above contentBottom. Every
+// sections below sectionsTop so they fit above bottom (contentBottom, or
+// feedNoticeTop when a feed notice takes the last row). Every
 // section starts with all its lines. While they don't fit, the first
 // section in trimOrder whose line budget is above its floor loses one
 // line of budget (budgetLines), so a section is trimmed down to its floor
@@ -234,7 +242,7 @@ type sectionLayout struct {
 // the section's own line count if lower. budgetLines may show fewer lines
 // than the budget, since an entry is never cut. An empty section takes one
 // line, for its empty text.
-func layoutSections(entries [sectionCount][][]string) [sectionCount]sectionLayout {
+func layoutSections(entries [sectionCount][][]string, bottom int) [sectionCount]sectionLayout {
 	var layout [sectionCount]sectionLayout
 	var budget, floor [sectionCount]int
 	for i, e := range entries {
@@ -251,7 +259,7 @@ func layoutSections(entries [sectionCount][][]string) [sectionCount]sectionLayou
 	}
 
 	packSections(&layout)
-	for !sectionsFit(layout) {
+	for !sectionsFit(layout, bottom) {
 		i := slices.IndexFunc(trimOrder[:], func(s int) bool { return budget[s] > floor[s] })
 		if i < 0 {
 			// Every section is at its floor; the constants make this
@@ -277,10 +285,10 @@ func packSections(layout *[sectionCount]sectionLayout) {
 }
 
 // sectionsFit reports whether the last section's last row, descent
-// included, stays above contentBottom.
-func sectionsFit(layout [sectionCount]sectionLayout) bool {
+// included, stays above bottom.
+func sectionsFit(layout [sectionCount]sectionLayout, bottom int) bool {
 	last := layout[sectionCount-1]
-	return last.top+sectionHeight(sectionLines(last))+bodyDescent <= contentBottom
+	return last.top+sectionHeight(sectionLines(last))+bodyDescent <= bottom
 }
 
 // sectionLines returns the number of body lines s takes: one for the empty

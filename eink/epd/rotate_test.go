@@ -219,7 +219,7 @@ func TestParseCable(t *testing.T) {
 
 func TestRotate_ClockRect(t *testing.T) {
 	now := time.Date(2026, 9, 16, 5, 45, 0, 0, time.UTC)
-	view, err := eink.NewView(nil, nil, nil, nil, nil, nil, now)
+	view, err := eink.NewView(nil, nil, nil, nil, nil, nil, nil, now)
 	if err != nil {
 		t.Fatalf("NewView: %v", err)
 	}
@@ -276,7 +276,7 @@ func TestRotate_ClockRect(t *testing.T) {
 func patternFrame(t *testing.T) *image.Gray {
 	t.Helper()
 	now := time.Date(2026, 9, 16, 5, 45, 0, 0, time.UTC)
-	view, err := eink.NewView(nil, nil, nil, nil, nil, nil, now)
+	view, err := eink.NewView(nil, nil, nil, nil, nil, nil, nil, now)
 	if err != nil {
 		t.Fatalf("NewView: %v", err)
 	}
