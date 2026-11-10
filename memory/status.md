@@ -461,3 +461,9 @@ Session-to-session progress log. Distinct from AGENTS.md (stable rules).
 
 
 **Run metrics:** 21 driver call(s), $4.6396, session 29960fa1-74c9-42c1-b95b-83203785deb9, cache read 3107025 / write 665785 / input 186 (share 82%)
+
+- Task 1 (owner initial): IDAG and KOMMANDE DAGAR rows now use `ownerInitialPrefix` (`"K  "`, or `""` without owner) instead of `"Kaj – "`; padding tests updated to the shorter prefix, new tests cover the prefix function (incl. `Å`) and exact line 1 / hanging indent of event and upcoming entries.
+- Task 2 (owner initial concept notes): eink-adapter.md now documents the `<time|weekday>  <Initial>  <summary>` row format, initials in all three entry sections (header still spelled out), why only IDAG/KOMMANDE pad, and a gotcha for owners sharing an initial; eink-view.md notes `EventRow.Owner`/`UpcomingRow.Owner` stay full names reduced by `initial`. `updated` already 2026-11-10 in both.
+
+
+**Run metrics:** 12 driver call(s), $2.1387, session 84847de4-44f2-4fcd-ad4a-b401d7b0ad9d, cache read 1333128 / write 323920 / input 96 (share 80%)

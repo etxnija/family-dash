@@ -5,7 +5,7 @@ summary: eink/view.go NewView/View — e-paper view-model of ready-to-draw Swedi
 links: [dashboard-page.md, collector.md, smhi-adapter.md, skolmaten-adapter.md]
 updated: 2026-11-10
 generated: { by: worker, at: 2026-11-10T00:00:00Z }
-verified: [{ by: "human", at: 2026-11-10 }]
+verified: [{ by: "human", at: 2026-11-10 }, { by: "human", at: 2026-11-10 }]
 ---
 
 # E-paper View-model (`eink/view.go`)
@@ -39,6 +39,8 @@ fully formatted: the 1-bit renderer only lays out strings.
   location, day label); the portrait renderer splits them into
   prefix/body/suffix and wraps each to at most two lines itself, so the
   view-model needed no change for the wrapping layout.
+  `EventRow.Owner`/`UpcomingRow.Owner` keep the full name; the renderer
+  reduces it to an initial with `initial`.
 
 ## Gotchas & Failure Modes
 - The heading/empty-state constants have no in-package caller until the

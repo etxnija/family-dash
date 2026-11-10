@@ -174,14 +174,14 @@ func lunchEntries(lunch []string, maxWidth int) [][]string {
 	return entries
 }
 
-// eventEntries returns the "<time>  <Owner> – <Summary>[, <Location>]"
+// eventEntries returns the "<time>  <Initial>  <Summary>[, <Location>]"
 // entries, each event wrapped to maxWidth. Every time is padded to the
 // widest one among all events, so the summaries line up.
 func eventEntries(events []EventRow, maxWidth int) [][]string {
 	width := maxLabelWidth(events, func(e EventRow) string { return e.Time })
 	entries := make([][]string, 0, len(events))
 	for _, e := range events {
-		entries = append(entries, wrapEntry(bodyFace, padRight(e.Time, width)+"  "+ownerPrefix(e.Owner), withLocation(e.Summary, e.Location), "", maxWidth))
+		entries = append(entries, wrapEntry(bodyFace, padRight(e.Time, width)+"  "+ownerInitialPrefix(e.Owner), withLocation(e.Summary, e.Location), "", maxWidth))
 	}
 	return entries
 }
@@ -203,7 +203,7 @@ func homeworkEntries(groups []HomeworkGroup, maxWidth int) [][]string {
 	return entries
 }
 
-// upcomingEntries returns the "<Abbrev>  <Owner> – <Summary>[,
+// upcomingEntries returns the "<Abbrev>  <Initial>  <Summary>[,
 // <Location>], <time|heldag>" entries, each wrapped to maxWidth so the
 // time is never cut. Every weekday is padded to the widest one among all
 // rows, so the summaries line up.
@@ -211,7 +211,7 @@ func upcomingEntries(upcoming []UpcomingRow, maxWidth int) [][]string {
 	width := maxLabelWidth(upcoming, func(u UpcomingRow) string { return u.Weekday })
 	entries := make([][]string, 0, len(upcoming))
 	for _, u := range upcoming {
-		entries = append(entries, wrapEntry(bodyFace, padRight(u.Weekday, width)+"  "+ownerPrefix(u.Owner), withLocation(u.Summary, u.Location), ", "+u.Time, maxWidth))
+		entries = append(entries, wrapEntry(bodyFace, padRight(u.Weekday, width)+"  "+ownerInitialPrefix(u.Owner), withLocation(u.Summary, u.Location), ", "+u.Time, maxWidth))
 	}
 	return entries
 }
@@ -307,12 +307,12 @@ func padRight(s string, width int) string {
 	return s + strings.Repeat(" ", max(width-utf8.RuneCountInString(s), 0))
 }
 
-// ownerPrefix returns "<owner> – ", or "" when owner is empty.
-func ownerPrefix(owner string) string {
+// ownerInitialPrefix returns "<Initial>  ", or "" when owner is empty.
+func ownerInitialPrefix(owner string) string {
 	if owner == "" {
 		return ""
 	}
-	return owner + " – "
+	return initial(owner) + "  "
 }
 
 // withLocation returns "<summary>, <location>", or summary alone when

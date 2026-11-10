@@ -612,7 +612,7 @@ func TestEntries_LabelsPaddedToWidest(t *testing.T) {
 		entries   [][]string
 		summaries []string // the summary each entry's first line holds
 		// wantPrefix is the rune count before every summary: the widest
-		// label, two spaces and "Kaj – ".
+		// label, two spaces and "K  ".
 		wantPrefix int
 	}{
 		{
@@ -623,7 +623,7 @@ func TestEntries_LabelsPaddedToWidest(t *testing.T) {
 				{Time: "18:00", Owner: "Kaj", Summary: long},
 			}, width),
 			summaries:  []string{"Tandläkare", "Studiedag", "Fotbollsträning"},
-			wantPrefix: len("heldag") + 2 + len([]rune("Kaj – ")),
+			wantPrefix: len("heldag") + 2 + len("K  "),
 		},
 		{
 			name: "KOMMANDE pads weekdays to Tors",
@@ -634,7 +634,7 @@ func TestEntries_LabelsPaddedToWidest(t *testing.T) {
 				{Weekday: "Lör", Time: "09:00", Owner: "Kaj", Summary: "Match"},
 			}, width),
 			summaries:  []string{"Simning", "Utflykt", "Fotbollsträning", "Match"},
-			wantPrefix: len("Tors") + 2 + len([]rune("Kaj – ")),
+			wantPrefix: len("Tors") + 2 + len("K  "),
 		},
 		{
 			name: "single label length gets no padding",
@@ -643,7 +643,7 @@ func TestEntries_LabelsPaddedToWidest(t *testing.T) {
 				{Weekday: "Fre", Time: "17:00", Owner: "Kaj", Summary: long},
 			}, width),
 			summaries:  []string{"Simning", "Fotbollsträning"},
-			wantPrefix: len("Ons") + 2 + len([]rune("Kaj – ")),
+			wantPrefix: len("Ons") + 2 + len("K  "),
 		},
 	}
 
@@ -707,7 +707,95 @@ func TestLayoutSections_PaddingFromHiddenEntry(t *testing.T) {
 			t.Fatalf("the Tors row is visible in %q, want it hidden", lines)
 		}
 	}
-	checkSummaryAt(t, lines[0], "Fotbollsträning", len("Tors")+2+len([]rune("Kaj – ")))
+	checkSummaryAt(t, lines[0], "Fotbollsträning", len("Tors")+2+len("K  "))
+}
+
+func TestOwnerInitialPrefix(t *testing.T) {
+	tests := []struct {
+		name  string
+		owner string
+		want  string
+	}{
+		{name: "owner gives initial and two spaces", owner: "Kaj", want: "K  "},
+		{name: "empty owner gives no prefix", owner: "", want: ""},
+		{name: "non-ASCII initial", owner: "Åsa", want: "Å  "},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := ownerInitialPrefix(tt.owner); got != tt.want {
+				t.Errorf("ownerInitialPrefix(%q) = %q, want %q", tt.owner, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestEntries_OwnerInitialPrefix(t *testing.T) {
+	width := contentRect.Dx()
+	long := "Fotbollsträning på Åvallen med hela laget och alla tränarna efter skolan"
+	tests := []struct {
+		name  string
+		entry []string
+		// wantLine1 is line 1 exactly; "" means only its prefix is checked.
+		wantLine1  string
+		wantPrefix string // line 1 starts with it; line 2 is indented as wide
+		wantLines  int
+		wantSuffix string // the last line ends in it
+	}{
+		{
+			name:      "IDAG row with owner",
+			entry:     eventEntries([]EventRow{{Time: "15:30", Owner: "Kaj", Summary: "Innebandy", Location: "Sporthallen"}}, width)[0],
+			wantLine1: "15:30  K  Innebandy, Sporthallen", wantPrefix: "15:30  K  ", wantLines: 1,
+		},
+		{
+			name:      "IDAG row without owner",
+			entry:     eventEntries([]EventRow{{Time: "15:30", Summary: "Innebandy", Location: "Sporthallen"}}, width)[0],
+			wantLine1: "15:30  Innebandy, Sporthallen", wantPrefix: "15:30  ", wantLines: 1,
+		},
+		{
+			name: "KOMMANDE row padded to Tors",
+			entry: upcomingEntries([]UpcomingRow{
+				{Weekday: "Ons", Time: "heldag", Owner: "Lisa", Summary: "Utflykt"},
+				{Weekday: "Tors", Time: "10:00", Owner: "Kaj", Summary: "Simning"},
+			}, width)[0],
+			wantLine1: "Ons   L  Utflykt, heldag", wantPrefix: "Ons   L  ", wantLines: 1, wantSuffix: ", heldag",
+		},
+		{
+			name:       "long IDAG row wraps under the initial prefix",
+			entry:      eventEntries([]EventRow{{Time: "15:30", Owner: "Kaj", Summary: long}}, width)[0],
+			wantPrefix: "15:30  K  ", wantLines: 2,
+		},
+		{
+			name: "long KOMMANDE row wraps under the initial prefix",
+			entry: upcomingEntries([]UpcomingRow{
+				{Weekday: "Ons", Time: "heldag", Owner: "Lisa", Summary: long},
+				{Weekday: "Tors", Time: "10:00", Owner: "Kaj", Summary: "Simning"},
+			}, width)[0],
+			wantPrefix: "Ons   L  ", wantLines: 2, wantSuffix: ", heldag",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if len(tt.entry) != tt.wantLines {
+				t.Fatalf("entry = %q, want %d lines", tt.entry, tt.wantLines)
+			}
+			if tt.wantLine1 != "" && tt.entry[0] != tt.wantLine1 {
+				t.Errorf("line 1 = %q, want %q", tt.entry[0], tt.wantLine1)
+			}
+			if !strings.HasPrefix(tt.entry[0], tt.wantPrefix) {
+				t.Errorf("line 1 %q does not start with prefix %q", tt.entry[0], tt.wantPrefix)
+			} else if strings.HasPrefix(tt.entry[0][len(tt.wantPrefix):], " ") {
+				t.Errorf("line 1 %q has extra spaces after prefix %q, want text", tt.entry[0], tt.wantPrefix)
+			}
+			if last := tt.entry[len(tt.entry)-1]; !strings.HasSuffix(last, tt.wantSuffix) {
+				t.Errorf("last line %q does not end in %q", last, tt.wantSuffix)
+			}
+			if len(tt.entry) == 2 {
+				checkHangingIndent(t, tt.entry[1], tt.wantPrefix)
+			}
+		})
+	}
 }
 
 func TestFitText(t *testing.T) {

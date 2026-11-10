@@ -5,7 +5,7 @@ summary: eink/ e-paper adapter — Stockholm view-model, 1-bit portrait 480x800 
 links: [docs/arch/adr/0002-dual-display-adapters-over-shared-interface.md, docs/arch/adr/0003-eink-panel-port-and-refresh-policy.md, docs/arch/adr/0004-portrait-frame-rotated-by-panel-adapter.md, docs/raspberry-pi-setup.md, dashboard-page.md, composition-root.md, eink-view.md]
 updated: 2026-11-10
 generated: { by: worker, at: 2026-11-10T00:00:00Z }
-verified: [{ by: "human", at: 2026-11-10 }, { by: "human", at: 2026-11-10 }]
+verified: [{ by: "human", at: 2026-11-10 }, { by: "human", at: 2026-11-10 }, { by: "human", at: 2026-11-10 }]
 ---
 
 # E-paper Adapter (`eink/`)
@@ -38,14 +38,21 @@ panel driver comes later, behind the port in
   it; then
   SKOLLUNCH, IDAG, LÄXOR OCH PROV and KOMMANDE DAGAR stack in that order.
 - Entries wrap to at most `maxEntryLines` (2) lines via `wrapEntry`:
-  line 1 starts with the prefix (time/weekday/initial + owner), line 2
-  with a hanging indent of one space per prefix rune (Go Mono is
-  monospace). In IDAG and KOMMANDE DAGAR the time/weekday label is
-  right-padded with spaces (`padRight`, `maxLabelWidth`) to the widest
-  label among *all* the section's rows, before trimming, so summaries
-  line up in one column whichever rows end up visible; the padding is
-  part of the prefix, so the hanging indent follows it. LÄXOR OCH PROV
-  needs no padding: its label is the one-letter owner initial, so it is
+  line 1 starts with the prefix, line 2 with a hanging indent of one
+  space per prefix rune (Go Mono is monospace). Owners are shown as
+  initials in all three entry sections (IDAG, LÄXOR OCH PROV, KOMMANDE
+  DAGAR); only the header owners line spells the names out. IDAG rows
+  read `<time|heldag>  <Initial>  <summary>[, <location>]` and KOMMANDE
+  DAGAR rows `<weekday>  <Initial>  <summary>[, <location>], <time|heldag>`;
+  `ownerInitialPrefix` gives the initial and two spaces, or nothing when
+  there is no owner. LÄXOR OCH PROV rows start with the initial
+  (`HomeworkGroup.Initial`). Only IDAG and KOMMANDE DAGAR have a
+  variable-width first label, so only they pad it: the time/weekday
+  label is right-padded with spaces (`padRight`, `maxLabelWidth`) to the
+  widest label among *all* the section's rows, before trimming, so
+  summaries line up in one column whichever rows end up visible; the
+  padding is part of the prefix, so the hanging indent follows it. In
+  LÄXOR OCH PROV the one-letter initial is the first label, so it is
   naturally aligned. The body breaks greedily at spaces; the suffix
   (homework `" (Prov)"`/day label, upcoming `", "+time`) is unbreakable
   and always ends the last line. Body text past two lines, and a single
@@ -90,6 +97,10 @@ panel driver comes later, behind the port in
   live in `eink/layout.go`; tweak the layout there, not in `render.go`.
 
 ## Gotchas & Failure Modes
+- Owners are identified by initial only in the entry sections, so two
+  family members whose names start with the same letter would be
+  indistinguishable there. Today's owners (Kaj, Lillian) do not clash;
+  this is not handled yet.
 - The panel is landscape-native (800x480). The driver adapter alone
   rotates the portrait frame by 90 degrees and maps partial-refresh rects
   (e.g. `ClockRect()`) to native coordinates (ADR-0004); the portrait
