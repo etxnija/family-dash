@@ -195,10 +195,12 @@ Notes:
 ## 10. Deploy and run as a service
 
 Everything below runs from the Mac, in the repo root. `make help` lists the targets. The Mac needs the SSH alias
-`familydash` with key login. The Pi user needs passwordless `sudo` (the default for the first user on Raspberry
-Pi OS) and membership of the `spi` and `gpio` groups.
+`familydash` with key login. The Pi user needs membership of the `spi` and `gpio` groups, and a sudo rule that lets it
+manage the service without a password: on this Pi `sudo` asks for a password by default, so run `make setup-sudo` once
+(it asks for the Pi password in your terminal). It installs `/etc/sudoers.d/family-dashboard`, which allows only
+start, stop, restart and enable of this one service, `daemon-reload`, and writing the unit file.
 
-- `make doctor` checks SSH, passwordless sudo and the groups. Run it first.
+- `make doctor` checks SSH, the sudo rule and the groups. Run it first.
 - `make deploy` runs the tests and the linter, cross-compiles, copies the binary and `sources.local.json` to
   `~/family-dash/` on the Pi, installs and enables the systemd unit `family-dashboard`, restarts it and shows the status.
   It is also the first-time install.

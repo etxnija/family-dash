@@ -12,7 +12,7 @@ SSH       := ssh $(HOST)
 # deploy runs its steps in order; never run them in parallel.
 .NOTPARALLEL:
 .PHONY: help test lint build-pi push-binary push-config install-service deploy deploy-config \
-        start stop restart status logs logs-last doctor
+        start stop restart status logs logs-last doctor setup-sudo
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*## ' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  %-16s %s\n", $$1, $$2}'
@@ -60,5 +60,10 @@ logs: ## Follow the service log (Ctrl-C to stop)
 logs-last: ## Show the last 200 log lines
 	$(SSH) 'journalctl -u $(SERVICE) -n 200 --no-pager -o cat'
 
-doctor: ## Check SSH, passwordless sudo and the spi/gpio groups on the Pi
-	$(SSH) 'echo "ssh ok: $$(id -un)@$$(hostname) $$(uname -m)"; sudo -n true && echo "sudo ok" || echo "sudo asks for a password: deploy will not work"; echo "groups: $$(id -nG)"'
+doctor: ## Check SSH, the sudo rule and the spi/gpio groups on the Pi
+	$(SSH) 'echo "ssh ok: $$(id -un)@$$(hostname) $$(uname -m)"; sudo -n systemctl daemon-reload && echo "sudo rule ok" || echo "no sudo rule: run make setup-sudo"; echo "groups: $$(id -nG)"'
+
+setup-sudo: ## One-time: let the Pi user manage this service without a sudo password (asks for the Pi password once)
+	ssh -t $(HOST) 'sc=$$(command -v systemctl) && tee=$$(command -v tee) && f=$$(mktemp) && \
+	echo "$$(id -un) ALL=(root) NOPASSWD: $$sc start $(SERVICE), $$sc stop $(SERVICE), $$sc restart $(SERVICE), $$sc enable $(SERVICE), $$sc daemon-reload, $$tee /etc/systemd/system/$(SERVICE).service" > $$f && \
+	sudo visudo -cf $$f && sudo install -m 440 -o root -g root $$f /etc/sudoers.d/$(SERVICE) && rm -f $$f && echo "sudoers rule installed"'
