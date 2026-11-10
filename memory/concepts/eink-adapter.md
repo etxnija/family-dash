@@ -1,11 +1,11 @@
 ---
 type: component
-tags: [eink, epaper, render, adapter, hexagonal, font, panel, port, pngpanel, epd, rotation, build-constraints, cable, refresh-loop, clock, partial, eink-loop, flags, sleep]
-summary: eink/ e-paper adapter — Panel port (Full/Partial/Sleep/Close) with three adapters (pngpanel PNG writer, linux/arm Waveshare 7.5" V2 epd driver, non-linux/arm epd stub), pure rotate.go (-cable left/right mapping, Rotate/RotateRect), driver call order and rotate_ms/refresh_ms logs; eink.Loop refresh loop behind -eink-loop (fetch every 30m/new day with 5m retry, full/partial/none by pixel diff around ClockRect, Sleep then single Close on SIGINT/SIGTERM, -eink-fetch-every/-eink-full-every/-eink-sleep; partial after Sleep UNVERIFIED on hardware); Stockholm view-model, 1-bit portrait 480x800 renderer (Go Mono, single column, clock/weather band, two-line wrapped entries, content-height sections trimmed by priority, ClockRect top/bottom on multiples of 8), plus verified driver facts.
+tags: [eink, prime, epaper, render, adapter, hexagonal, font, panel, port, pngpanel, epd, rotation, build-constraints, cable, refresh-loop, clock, partial, eink-loop, flags, sleep]
+summary: eink/ e-paper adapter — Panel port (Full/Partial/Sleep/Close) with three adapters (pngpanel PNG writer, linux/arm Waveshare 7.5" V2 epd driver, non-linux/arm epd stub), pure rotate.go (-cable left/right mapping, Rotate/RotateRect), driver call order and rotate_ms/refresh_ms logs, Partial primed with the last shown frame (primeBeforePartial: InitPart, DisplayPart previous, DisplayPart new); eink.Loop refresh loop behind -eink-loop (fetch every 30m/new day with 5m retry, full/partial/none by pixel diff around ClockRect, Sleep then single Close on SIGINT/SIGTERM, -eink-fetch-every/-eink-full-every/-eink-sleep; priming fixed the grainy partial after ~60 s Sleep in a Nov 2026 spike, not yet verified in the real binary on the panel); Stockholm view-model, 1-bit portrait 480x800 renderer (Go Mono, single column, clock/weather band, two-line wrapped entries, content-height sections trimmed by priority, ClockRect top/bottom on multiples of 8), plus verified driver facts and Nov 2026 spike timings.
 links: [docs/arch/adr/0002-dual-display-adapters-over-shared-interface.md, docs/arch/adr/0003-eink-panel-port-and-refresh-policy.md, docs/arch/adr/0004-portrait-frame-rotated-by-panel-adapter.md, docs/raspberry-pi-setup.md, dashboard-page.md, composition-root.md, eink-view.md]
-updated: 2026-11-10 (Partial, RotateRect, eink.Loop and the -eink-loop flags documented)
+updated: 2026-11-10 (Partial priming documented with the Nov 2026 spike findings and timings)
 generated: { by: worker, at: 2026-11-10T00:00:00Z }
-verified: [{ by: "human", at: 2026-11-10 }, { by: "human", at: 2026-11-10 }, { by: "human", at: 2026-11-10 }, { by: "human", at: 2026-11-10 }, { by: "human", at: 2026-11-10 }]
+verified: [{ by: "human", at: 2026-11-10 }, { by: "human", at: 2026-11-10 }, { by: "human", at: 2026-11-10 }, { by: "human", at: 2026-11-10 }, { by: "human", at: 2026-11-10 }, { by: "human", at: 2026-11-10 }]
 ---
 
 # E-paper Adapter (`eink/`)
@@ -197,22 +197,44 @@ below).
     `Close()` and joins both errors.
   - `Full` runs `Rotate`, checks the result against `ScreenBounds`, then
     calls `Init()` before every `DisplayImage`. Every `Full` is a full
-    refresh (about 4 s).
-  - `Partial` runs `RotateRect`, checks the native rect lies inside
-    `ScreenBounds`, then calls `InitPart` and `DisplayPart(small,
-    nativeRect)`. `Full`'s `Init` returns the controller from partial
-    mode.
+    refresh (Init 0.17 s + 3.4–3.9 s). On success it remembers `frame`
+    as the shown frame.
+  - `Partial` fails with `epd: partial refresh before any frame was
+    shown`, without any device call, until a `Full` or `Partial` has
+    succeeded. Otherwise it runs `RotateRect` on the remembered frame and
+    on the new one (same `rect`, so the same native rect), checks the
+    native rect lies inside `ScreenBounds`, then calls `InitPart`,
+    `DisplayPart(previous, nativeRect)`, `DisplayPart(small, nativeRect)`
+    and on success remembers the new frame. `Full`'s `Init` returns the
+    controller from partial mode.
+  - The remembered frame (`shown`) is an independent thresholded copy
+    made by `copyFrame`, set only after `DisplayImage` or the last
+    `DisplayPart` succeeds; any failure leaves it unchanged.
+  - `primeBeforePartial` (a const in `device.go`, true, copied into
+    `devicePanel.prime` by `openDevice`, no flag) is the one switch. Set
+    to false, `Partial` makes a single `DisplayPart` and needs no shown
+    frame; `shown` is still updated.
+  - Why prime: in the Nov 2026 spike a partial after about 60 s of deep
+    sleep, without priming, left the changed clock digit grainy and
+    half-written, while writing the shown image first was clean (see
+    "Hardware and driver facts"). Working theory, not confirmed: during a
+    long deep sleep the controller loses its copy of what is on screen,
+    so the partial update diffs against bad data, and the first write
+    restores it. The cost is one extra partial write (about 0.5 s) per
+    minute.
   - `Sleep()` follows every update and `Close()` comes last. Both are
     called by the caller (`showOnce` or `eink.Loop`), not by `Full` or
     `Partial`.
   - Errors are wrapped with the step name (`epd: gpio init`, `epd:
     rotate`, `epd: init`, `epd: display`, `epd: rotate rect`, `epd: init
-    part`, `epd: display part`, `epd: sleep`, `epd: close`).
+    part`, `epd: display part (previous image)`, `epd: display part`,
+    `epd: sleep`, `epd: close`).
 - `Full` logs `rotated e-paper frame` with `rotate_ms` and `cable`, then
   `full refresh` with `refresh_ms` (Init + DisplayImage). `Partial`
-  logs `rotated e-paper rect` with `rotate_ms`, `cable` and
-  `native_rect`, then `partial refresh` with `partial_ms` (InitPart +
-  DisplayPart).
+  logs `rotated e-paper rect` with `rotate_ms` (both rects when
+  priming), `cable` and `native_rect`, then `partial refresh` with
+  `primed` and `partial_ms` (InitPart + both DisplayPart writes when
+  primed, so about 1.2 s).
 - The sensors only build for the host. Check `epd.go` changes and build
   the Pi binary with
   `GOOS=linux GOARCH=arm GOARM=6 CGO_ENABLED=0 go build ./... && GOOS=linux GOARCH=arm GOARM=6 go vet ./...`
@@ -250,8 +272,9 @@ below).
 - The shown frame only changes on a successful refresh, so a failed
   `Partial` is redone as a `Full`. `Sleep` follows every panel call when
   `SleepEveryUpdate` (errors logged, never fatal).
-- Why this order: a full refresh takes about 4 s and flashes, a partial
-  about 0.4 s, so the loop does the cheapest refresh that leaves the
+- Why this order: a full refresh takes about 4 s (Init + 3.4–3.9 s) and
+  flashes, a primed partial about 1.2 s (InitPart + two writes of about
+  0.5 s), so the loop does the cheapest refresh that leaves the
   panel right. Partial refreshes ghost, so `FullEvery` forces a full one
   regularly. `Partial` only redraws `ClockRect()`, so any change outside
   it (new events, weather, a new day) needs a full refresh. After a
@@ -271,22 +294,24 @@ below).
   - `-eink-fetch-every` (default 30m, at least 1m): `FetchEvery`.
   - `-eink-full-every` (default 1h, at least 1m): `FullEvery`.
   - `-eink-sleep` (default true): `SleepEveryUpdate`.
-- **UNVERIFIED on the real panel:** a partial refresh after `Sleep`. The
-  verified facts below cover `InitPart` + `DisplayPart` on an awake panel
-  only. Whether `InitPart` alone wakes the panel from `Sleep` and keeps
-  the previous image as the base for the partial update has not been
-  tested. `-eink-sleep=false` exists so a human can run the loop on the
-  Pi without sleeping between updates and compare the two.
+- Partial after `Sleep`: verified in the Nov 2026 spike (see "Hardware
+  and driver facts"). Without priming a partial after about 60 s of deep
+  sleep was grainy; priming with the shown image fixed it. **Not yet
+  verified on the panel:** the fix inside the real binary (`-eink-loop
+  -eink-panel` with priming); a human will check it and mark it here.
+  `-eink-sleep=false` stays as the fallback, since staying awake was
+  also clean at 60 s.
 
 ## Hardware and driver facts for the panel adapter
 Verified on a Pi Zero W with the Waveshare 7.5" V2 and
 `github.com/ditrytus/epd7in5v2` v0.1.0 (see
 [raspberry-pi-setup.md](../../docs/raspberry-pi-setup.md)):
 - The panel is 800x480 and 1-bit only (no greyscale).
-- `DisplayImage` is a full refresh: about 4 s after `Init`, about 1.5 s
-  after `InitFast`.
-- `InitPart` followed by `DisplayPart(img, rect)` is a partial refresh,
-  about 0.4 s.
+- `DisplayImage` is a full refresh after `Init` (about 4 s in total,
+  timings below). About 1.5 s after `InitFast` (library figure, not
+  measured).
+- `InitPart` followed by `DisplayPart(img, rect)` is a partial refresh
+  (about 0.7 s in total, timings below).
 - `DisplayPart` takes an image the size of `rect` with its origin at (0,0),
   not the full frame. Passing the full frame shows the frame's top-left
   corner inside `rect`.
@@ -297,3 +322,16 @@ Verified on a Pi Zero W with the Waveshare 7.5" V2 and
 - Partial refresh ghosts, so a periodic full refresh is required.
 - Call `Sleep()` after use.
 - Cross-compile with `GOOS=linux GOARCH=arm GOARM=6 CGO_ENABLED=0`.
+
+Verified on the same Pi Zero W with a spike in Nov 2026, drawing the
+clock rect (88 px wide, 232 px tall on the panel):
+- Timings: `Init` 0.17 s, full refresh (`DisplayImage`) 3.4–3.9 s,
+  `InitPart` 0.17 s, partial update (`DisplayPart`) about 0.5 s, `Sleep`
+  0.04 s.
+- Partials 2 s apart were clean in every variant tried: sleep and
+  re-init each time, re-init without sleep, init once without sleep,
+  writing twice, and white-then-digits.
+- A partial after about 60 s of deep sleep, without priming, gave a
+  grainy, half-written digit in the clock rect.
+- At 60 s, priming (writing the shown image of the rect, then the new
+  one) was clean, and so was staying awake (no `Sleep`).

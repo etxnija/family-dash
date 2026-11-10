@@ -156,6 +156,42 @@ full refresh, puts the panel to sleep and exits. The picture stays on the panel 
   frame took about 170 ms and the full refresh about 3.8 s; fetching the data over the phone hotspot took about 1 s, so
   the whole run is roughly 6 s from start to exit.
 
+## 9. Wi-Fi networks (home, hotspot, venue)
+
+The Pi OS image uses NetworkManager. It keeps a list of known Wi-Fi networks (profiles), joins whichever one it can see
+at boot and, if several are in range, prefers the one with the highest `autoconnect-priority`. Moving between home, a
+phone hotspot and a venue's Wi-Fi therefore needs no reflashing: add one profile per network over SSH.
+
+A profile can be saved while its network is out of range (`nmcli connection add` only stores it). Do not use
+`nmcli device wifi connect` for this: it tries to join at once and drops the current SSH session.
+
+```sh
+read -rs -p "Wi-Fi password: " PW; echo
+sudo nmcli connection add type wifi con-name home ssid "<SSID>" \
+  wifi-sec.key-mgmt wpa-psk wifi-sec.psk "$PW" \
+  connection.autoconnect yes connection.autoconnect-priority 20
+unset PW
+```
+
+The hidden prompt keeps the password out of the shell history. Useful checks (end with `| cat` to avoid the pager):
+
+```sh
+nmcli -f NAME,TYPE,AUTOCONNECT,AUTOCONNECT-PRIORITY connection show | cat
+nmcli -f connection.id,802-11-wireless.ssid,802-11-wireless-security.key-mgmt,connection.autoconnect-priority connection show <profile> | cat
+```
+
+Notes:
+
+- The `NAME` column of `nmcli connection show` is the profile name, not the SSID. The profile created by the Pi
+  Imager is called `netplan-wlan0-<SSID>`; the SSID is a property of the profile (second command above).
+- The Pi Zero W only supports 2.4 GHz and WPA2 (not WPA3-only). If the router has separate 2.4 and 5 GHz names, use
+  the 2.4 GHz one.
+- Verified (Nov 2026): a `home` profile at priority 20 saved next to the Imager's venue profile at priority 0, with
+  `wpa-psk` security on both. **Not yet verified:** that the Pi joins the home network by itself after being powered
+  on at home.
+- To find the Pi on a new network, try `familydash.local` first (mDNS); otherwise look for `familydash` in the
+  router's device list.
+
 ## Troubleshooting: green LED flash codes (Pi 1/2/3/Zero)
 
 A repeating fixed count of flashes followed by a pause is an error code:
@@ -179,4 +215,5 @@ then verify `kernel.img` exists on `bootfs`.
   partial refresh of the clock rectangle are not implemented yet.
 - Deployment workflow: cross-compiling and copying a binary works by hand (sections 7-8); a service/autostart setup
   and a repeatable deploy command are not yet defined.
-- Switching the Pi between the phone hotspot and the home Wi-Fi is not yet documented.
+- Switching networks is documented in section 9, but joining the home network by itself at power-on is not yet
+  verified.
