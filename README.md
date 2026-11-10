@@ -33,9 +33,17 @@ webcal/
   sportadmin_test.go           adapter tests (fixture-based, no network)
   testdata/sample.ics          sample ICS fixture used by the adapter tests
 
+eink/
+  view.go                      adapter: e-paper view-model (Swedish, Stockholm time)
+  layout.go                    every layout constant of the 800x480 frame
+  render.go                    1-bit renderer: View → *image.Gray (Go Mono fonts)
+  view_test.go, render_test.go adapter tests
+
 cmd/
   family-dashboard/main.go     composition root: wires the webcal adapter into
-                                the domain, prints today's events to stdout
+                                the domain, prints today's events to stdout;
+                                `-config <file> -eink-png frame.png` writes one
+                                e-paper frame as PNG and exits
 
 AGENTS.md                      project conventions for AI agents working here
 CLAUDE.md                      pointer to AGENTS.md + memory/status.md
@@ -98,3 +106,5 @@ Per the PRD's phased rollout:
 - **Phase 3:** school data source (InfoMentor), once its integration reliability/credential tradeoffs are settled.
 - **Phase 4 (future, unscheduled):** swap the browser page for an e-ink display — the original inspiration, deferred for
   now.
+  The `eink/` 1-bit renderer and its `-eink-png` PNG preview exist; the Waveshare panel driver adapter on the Pi comes
+  next.

@@ -400,3 +400,25 @@ Session-to-session progress log. Distinct from AGENTS.md (stable rules).
 
 
 **Run metrics:** 7 driver call(s), $4.9311, session 7d075ba2-a631-409d-9ddd-c317b83930b7
+
+## 2026-11-10 — eink view-model
+
+- Added `eink/view.go` (`NewView` → `View` of ready-to-draw Swedish strings: date/week/clock/owners header, `WeatherView`, lunch, `EventRow`/`HomeworkGroup`/`UpcomingRow`, shared heading and empty-state constants) and table-driven `eink/view_test.go`; `HomeworkGroup` also carries `Initial` so the renderer needn't derive it. `go vet`, `gofmt -l .`, `go test ./... -race`, `golangci-lint run` all pass.
+
+## 2026-11-10 — eink 1-bit renderer
+
+- Added the eink 1-bit renderer: `eink/layout.go` (all layout constants, `ClockRect()` at X 16–272 / Y 64–152), `eink/render.go` (`Render(View) *image.Gray` 800x480 thresholded frame, Go Mono/Go Mono Bold faces parsed once at init, per-column sub-image clipping, `fitText`/`fitParts` "…" cutting that keeps homework day labels and upcoming times, `limitRows` "+N till", low/high weather line wrapped at " · ") and table-driven `eink/render_test.go`; pinned `golang.org/x/image` v0.36.0 because v0.37.0–v0.45.0 require `go 1.25.0` and `go mod tidy` would rewrite our `go 1.25`.
+
+## 2026-11-10 — shared fetch helper and -eink-png mode
+
+- Extracted `fetchDashboard` (`dashboardData` struct; Collect + Owners + nil-safe lunch/weather with unchanged `slog.Error` messages, one `now` threaded through) from `handleIndex`; added `-eink-png <path>` one-shot export (`exportEinkPNG` → `eink.NewView`/`eink.Render` → `writePNG`, exit 0 on success before the server starts, `slog.Error` + exit 1 on failure, nothing on stdout) with table-driven `fetchDashboard`/`writePNG`/`buildAdapters` tests; updated `composition-root.md`. `gofmt`, `go vet`, `go test ./... -race`, `golangci-lint run` all pass.
+- Deliberate deviation from the spec: extracted `buildAdapters(cfg)` (collector + lunch + weather construction) so the server and `-eink-png` share one wiring path; the "no school lunch feed configured" / "no weather location configured" Info logs now also fire on `-eink-png` runs.
+- `writePNG` removes the file if `png.Encode` fails after `os.Create`, so no truncated PNG is left at the export path (covered by a 0x0-image test case).
+- Manual check with a config of `{"sources": []}`: `go run ./cmd/family-dashboard -config $T/config.json -eink-png $T/frame.png` exited 0 with empty stdout and `file` reported `PNG image data, 800 x 480, 8-bit grayscale`; the same command with `-eink-png $T/missing/frame.png` logged `writing e-paper frame` and exited 1.
+
+## 2026-11-10 — eink adapter memory and README
+
+- Added `memory/concepts/eink-adapter.md` (renderer rules, `ClockRect` byte alignment, Go Mono/x/image pin, verified Waveshare 7.5" V2 + `epd7in5v2` v0.1.0 driver facts) with an index entry; `composition-root.md` now describes `handleIndex` via `fetchDashboard` and states that `-eink-png` exits without serving and leaves `-config` unchanged; README gains `eink/` + `-eink-png` in the Structure tree and a Phase 4 progress note. Deviation: the plan said x/image "v0.48+ needs Go 1.26"; the module cache shows `go 1.26.0` from v0.46.0 on (v0.37.0–v0.45.0 are `go 1.25.0`), so the concept file records v0.46.0+.
+
+
+**Run metrics:** 27 driver call(s), $7.7441, session 4c69e1ba-bc0d-4cbb-9477-d72aea087cf4, cache read 5137752 / write 855373 / input 304 (share 86%)

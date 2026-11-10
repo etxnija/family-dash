@@ -1,11 +1,11 @@
 ---
 type: component
-tags: [main, config, composition-root, multi-source, cmd, http, lunch, weather]
-summary: cmd/family-dashboard main() — JSON sources+school+location config, adapter construction at startup, dashboard.Collector/LunchSource/WeatherSource wiring, per-request Collect/Lunch/Weather/render.
-links: [docs/arch/adr/0001-config-path-via-required-flag.md, webcal-adapter.md, collector.md, skolmaten-adapter.md, smhi-adapter.md]
-updated: 2026-09-22 (wired smhi.WeatherSource into handleIndex)
+tags: [main, config, composition-root, multi-source, cmd, http, lunch, weather, eink, png]
+summary: cmd/family-dashboard main() — JSON sources+school+location config, adapter construction at startup, dashboard.Collector/LunchSource/WeatherSource wiring, shared fetchDashboard helper for per-request HTML render and the one-shot -eink-png export.
+links: [docs/arch/adr/0001-config-path-via-required-flag.md, webcal-adapter.md, collector.md, skolmaten-adapter.md, smhi-adapter.md, eink-adapter.md]
+updated: 2026-11-10 (fetchDashboard shared by handleIndex and -eink-png; PNG mode exits without serving)
 generated: { by: worker, at: 2026-09-18T00:00:00Z }
-verified: [{ by: "human", at: 2026-09-18 }, { by: "human", at: 2026-09-18 }, { by: "human", at: 2026-09-18 }, { by: "human", at: 2026-09-18 }, { by: "human", at: 2026-09-21 }, { by: "human", at: 2026-09-22 }]
+verified: [{ by: "human", at: 2026-09-18 }, { by: "human", at: 2026-09-18 }, { by: "human", at: 2026-09-18 }, { by: "human", at: 2026-09-18 }, { by: "human", at: 2026-09-21 }, { by: "human", at: 2026-09-22 }, { by: "human", at: 2026-11-10 }]
 ---
 
 # Composition Root (`cmd/family-dashboard`)
@@ -48,39 +48,62 @@ merging, and deriving today/homework/upcoming views all live in
   package-level branch elsewhere.
 - `config.Load` errors never include file contents — only the path and
   underlying cause — since the file holds secret URLs.
-- `main()` loads config once at startup, then loops over `cfg.Sources`
-  calling `buildSource(src)` for each. A `buildSource` error is `slog.Error`-logged
-  (source name/type, never the URL) and that source is skipped — same
-  log-and-continue as before, just moved to startup instead of per-request.
-  Successful builds are collected into `[]dashboard.NamedSource{Owner:
-  src.Name, Source: source}` and passed once to `dashboard.NewCollector(...)`,
-  whose result is stored and handed to `handleIndex`.
+- `main()` loads config once at startup and passes it to `buildAdapters(cfg)`,
+  which returns the collector, lunch source, and weather source. Both the
+  HTTP server and the `-eink-png` export use this one wiring path, so the
+  `no school lunch feed configured` / `no weather location configured` Info
+  logs fire in both modes.
+- `buildAdapters` loops over `cfg.Sources` calling `buildSource(src)` for
+  each. A `buildSource` error is `slog.Error`-logged (source name/type,
+  never the URL) and that source is skipped — same log-and-continue as
+  before, just moved to startup instead of per-request. Successful builds
+  are collected into `[]dashboard.NamedSource{Owner: src.Name, Source:
+  source}` and passed once to `dashboard.NewCollector(...)`, whose result
+  is returned to `main()` and handed to `handleIndex`.
 - `handleIndex(collector *dashboard.Collector, lunchSource dashboard.LunchSource, weatherSource dashboard.WeatherSource)`
-  no longer loops over sources or calls
-  `TodayEvents`/`HomeworkEvents`/`UpcomingEvents`/`WithOwner` directly — its
-  closure calls `collector.Collect(r.Context(), time.Now())` to get the
-  three filtered event slices, then `collector.Owners()` for the owner
-  list, and passes both plus a dish list and a `*float64` temperature into
-  `web.NewPageData(today, homework, upcoming, owners, dishes, temperature,
-  time.Now())` / `web.Render` (see [webcal-adapter.md](webcal-adapter.md)
-  sibling pattern in the `web` package) to produce the HTML response.
-  `r.Context()` still flows through to `Collect` so a client disconnect
-  cancels in-flight fetches.
-- `lunchSource` is built once in `main()` (see
+  takes one `now := time.Now()` per request, calls
+  `fetchDashboard(r.Context(), …, now)`, and passes the resulting
+  today/homework/upcoming/owners/lunch/weather plus the same `now` into
+  `web.NewPageData` / `web.Render` to produce the HTML response.
+  `r.Context()` flows through to `Collect` so a client disconnect cancels
+  in-flight fetches.
+- `lunchSource` is built once in `buildAdapters` (see
   [skolmaten-adapter.md](skolmaten-adapter.md)) — `nil` if
-  `cfg.School.RSSURL` is empty. `handleIndex` calls `lunchSource.Lunch(r.Context())`
-  per request only when non-nil; a `Lunch` error is `slog.Error`-logged and
-  the request continues with an empty dish list (`nil []string`), same
+  `cfg.School.RSSURL` is empty. `fetchDashboard` calls `lunchSource.Lunch(ctx)`
+  only when non-nil; a `Lunch` error is `slog.Error`-logged and the render
+  continues with an empty dish list (`nil []string`), same
   log-and-continue philosophy as a failing calendar source in
   `Collector.Collect`.
-- `weatherSource` is built once in `main()` (see
+- `weatherSource` is built once in `buildAdapters` (see
   [smhi-adapter.md](smhi-adapter.md)) — `nil` if `cfg.Location.Lat == 0 &&
-  cfg.Location.Lon == 0`. `handleIndex` calls
-  `weatherSource.Weather(r.Context())` per request only when non-nil; a
-  `Weather` error is `slog.Error`-logged and the request continues with a
-  `nil` temperature (`*float64`), same log-and-continue philosophy as the
-  lunch source. On success, `&reading.Temperature` (a pointer into the
-  local `reading` variable) is passed to `web.NewPageData`.
+  cfg.Location.Lon == 0`. `fetchDashboard` calls
+  `weatherSource.Weather(ctx, now)` only when non-nil; a `Weather` error is
+  `slog.Error`-logged and the render continues with a `nil` reading, same
+  log-and-continue philosophy as the lunch source. On success,
+  `dashboardData.Weather` points at the fetched reading, which
+  `handleIndex` passes on to `web.NewPageData`.
+- `fetchDashboard(ctx, collector, lunchSource, weatherSource, now) dashboardData`
+  is the single place that fetches everything for one render: `Collect`,
+  `Owners`, then the nil-safe lunch and weather fetches (same
+  log-and-continue `slog.Error` messages). One `now` is threaded through
+  `Collect`, `Weather`, and the view constructor so a render sees a single
+  consistent instant. `handleIndex` calls it with `r.Context()`; the PNG
+  export calls it with `context.Background()`. New output targets should
+  reuse it rather than re-fetch inline.
+- `-eink-png <path>` (optional) switches `main()` into one-shot export mode
+  after sources are built: `exportEinkPNG` fetches once, builds
+  `eink.NewView` → `eink.Render`, and `writePNG` encodes the 800x480 frame
+  (returning the `Close` error, joined with any encode error). If
+  `png.Encode` fails after `os.Create` succeeded, `writePNG` removes the
+  file so a display reading that path never sees a truncated PNG. Note that
+  `os.Create` truncates first, so a previous good frame at the path is gone
+  either way — there is no write-to-temp-and-rename. Success logs
+  `wrote e-paper frame` and returns before the HTTP server starts (exit 0);
+  any failure logs `writing e-paper frame` with the cause and exits 1.
+  Nothing is written to stdout. The mode never serves HTTP, and it does
+  not change `-config`: the flag is still required and parsed exactly as in
+  server mode (ADR-0001). Rendering itself is in
+  [eink-adapter.md](eink-adapter.md).
 - The `ownerNames` free function is gone — `Collector.Owners()` replaces it,
   computed once in `NewCollector` from the same `NamedSource` pairs used for
   fetching, so the owner list and the fetch list can't drift apart.
@@ -90,14 +113,18 @@ merging, and deriving today/homework/upcoming views all live in
   (log-and-continue on a failing source, same as the old per-request loop).
 - Tests split along the same boundary: `config/config_test.go` (`package
   config_test`) covers `Load`; `cmd/family-dashboard/main_test.go`
-  (`package main`) covers `buildSource`, unchanged by this rewrite;
+  (`package main`) covers `buildSource`, `buildAdapters`, `fetchDashboard`
+  (stub lunch/weather sources: nil, failing, succeeding), and `writePNG`
+  (decode-back 800x480, missing-directory error, encode failure removes the
+  partial file);
   `collector_test.go` (package `dashboard`) covers the fetch/merge/filter
   logic that used to live inline in `handleIndex`.
 
 ## Gotchas & Failure Modes
 - Only `config.Load` failure (missing/malformed config file) and
-  `http.ListenAndServe` failure are fatal (`os.Exit(1)`); missing `-config`
-  flag is a usage error (`os.Exit(2)`, per ADR-0001). Individual source
+  `http.ListenAndServe` failure are fatal (`os.Exit(1)`); a failed
+  `-eink-png` export also exits 1. Missing `-config` flag is a usage
+  error (`os.Exit(2)`, per ADR-0001). Individual source
   build or fetch failures are not fatal by design — they degrade the
   dashboard (fewer sources), not the whole server.
 - Adapter construction (`buildSource`) now happens once at startup instead
