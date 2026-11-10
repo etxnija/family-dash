@@ -37,13 +37,21 @@ eink/
   view.go                      adapter: e-paper view-model (Swedish, Stockholm time)
   layout.go                    every layout constant of the portrait 480x800 frame
   render.go                    1-bit renderer: View → *image.Gray (Go Mono fonts)
+  panel.go                     Panel port: Full/Sleep/Close of a portrait frame
   view_test.go, render_test.go adapter tests
+  pngpanel/                    Panel adapter: writes each frame to a PNG file
+  epd/                         Panel adapter for the Waveshare 7.5" V2 panel
+    rotate.go                  pure: -cable parsing, portrait → native 800x480 rotation
+    epd.go                     linux && arm only: thin wrapper over the epd7in5v2 driver
+    epd_other.go               stub elsewhere: every call returns "only supported on linux/arm"
 
 cmd/
   family-dashboard/main.go     composition root: wires the webcal adapter into
                                 the domain, prints today's events to stdout;
                                 `-config <file> -eink-png frame.png` writes one
-                                e-paper frame as PNG and exits
+                                e-paper frame as PNG and exits;
+                                `-config <file> -eink-panel -cable left|right`
+                                draws one frame on the panel, sleeps it and exits
 
 AGENTS.md                      project conventions for AI agents working here
 CLAUDE.md                      pointer to AGENTS.md + memory/status.md
@@ -106,5 +114,6 @@ Per the PRD's phased rollout:
 - **Phase 3:** school data source (InfoMentor), once its integration reliability/credential tradeoffs are settled.
 - **Phase 4 (future, unscheduled):** swap the browser page for an e-ink display — the original inspiration, deferred for
   now.
-  The `eink/` 1-bit renderer and its `-eink-png` PNG preview exist; the Waveshare panel driver adapter on the Pi comes
-  next.
+  The `eink/` 1-bit renderer, its `-eink-png` PNG preview and a one-shot `-eink-panel` mode (draw one frame on the
+  Waveshare panel, sleep it, exit) exist; the refresh loop with partial clock refreshes comes next. Build the Pi binary
+  with `GOOS=linux GOARCH=arm GOARM=6 CGO_ENABLED=0 go build -o family-dashboard-pi ./cmd/family-dashboard`.

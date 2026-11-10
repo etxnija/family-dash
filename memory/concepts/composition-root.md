@@ -1,11 +1,11 @@
 ---
 type: component
-tags: [main, config, composition-root, multi-source, cmd, http, lunch, weather, eink, png]
-summary: cmd/family-dashboard main() — JSON sources+school+location config, adapter construction at startup, dashboard.Collector/LunchSource/WeatherSource wiring, shared fetchDashboard helper for per-request HTML render and the one-shot -eink-png export.
+tags: [main, config, composition-root, multi-source, cmd, http, lunch, weather, eink, png, epd, flags]
+summary: cmd/family-dashboard main() — JSON sources+school+location config, adapter construction at startup, dashboard.Collector/LunchSource/WeatherSource wiring, fetchDashboard shared by the HTML handler and the one-shot showOnce helper (any eink.Panel, always Sleep+Close) behind -eink-png (pngpanel) and -eink-panel -cable left|right (epd); parseFlags validates flags (mutually exclusive eink modes, exit 2).
 links: [docs/arch/adr/0001-config-path-via-required-flag.md, webcal-adapter.md, collector.md, skolmaten-adapter.md, smhi-adapter.md, eink-adapter.md]
-updated: 2026-11-10 (fetchDashboard shared by handleIndex and -eink-png; PNG mode exits without serving)
+updated: 2026-11-10 (showOnce + pngpanel replace exportEinkPNG/writePNG; -eink-panel/-cable, exclusivity exit 2, always Sleep and Close)
 generated: { by: worker, at: 2026-09-18T00:00:00Z }
-verified: [{ by: "human", at: 2026-09-18 }, { by: "human", at: 2026-09-18 }, { by: "human", at: 2026-09-18 }, { by: "human", at: 2026-09-18 }, { by: "human", at: 2026-09-21 }, { by: "human", at: 2026-09-22 }, { by: "human", at: 2026-11-10 }]
+verified: [{ by: "human", at: 2026-09-18 }, { by: "human", at: 2026-09-18 }, { by: "human", at: 2026-09-18 }, { by: "human", at: 2026-09-18 }, { by: "human", at: 2026-09-21 }, { by: "human", at: 2026-09-22 }, { by: "human", at: 2026-11-10 }, { by: "human", at: 2026-11-10 }]
 ---
 
 # Composition Root (`cmd/family-dashboard`)
@@ -20,6 +20,21 @@ or flags, per
 [ADR-0001](../../docs/arch/adr/0001-config-path-via-required-flag.md); the
 file's path is a required `-config` flag with no default. Listen address is
 a separate `-addr` flag (default `:8080`).
+
+Flags are parsed by `parseFlags(args, output io.Writer) (options, error)`
+with its own `flag.FlagSet` (`ContinueOnError`), not the global `flag`
+package, so validation is table-tested (`TestParseFlags`). `options` holds
+`config`, `addr`, `einkPNG`, `einkPanel` and `cable epd.Cable`. It errors on
+a missing `-config` (ADR-0001), `-eink-png` together with `-eink-panel`, an
+invalid `-cable` when `-eink-panel` is set (via `epd.ParseCable`), and
+unknown flags. For its own checks it logs the error with
+`slog.Error("invalid flags", ...)` (JSON on stderr) and prints usage to
+`output` itself. Usage printing stays in `parseFlags` on purpose: the
+`FlagSet` already prints usage for `fs.Parse` errors, so both error paths
+print it from the same place, and `main()` only maps errors to exit codes.
+`-cable` (default `left`) is not parsed without `-eink-panel`, so
+`-cable up` alone is accepted and `cable` stays `CableLeft`. `main()` exits
+2 on any error and 0 on `flag.ErrHelp` (`-h`).
 
 Adapter construction and event collection are now split across startup and
 request time: `main()` builds each source's adapter once and wires them into
@@ -49,10 +64,10 @@ merging, and deriving today/homework/upcoming views all live in
 - `config.Load` errors never include file contents — only the path and
   underlying cause — since the file holds secret URLs.
 - `main()` loads config once at startup and passes it to `buildAdapters(cfg)`,
-  which returns the collector, lunch source, and weather source. Both the
-  HTTP server and the `-eink-png` export use this one wiring path, so the
-  `no school lunch feed configured` / `no weather location configured` Info
-  logs fire in both modes.
+  which returns the collector, lunch source, and weather source. The HTTP
+  server, the `-eink-png` export and the `-eink-panel` draw all use this one
+  wiring path, so the `no school lunch feed configured` / `no weather
+  location configured` Info logs fire in every mode.
 - `buildAdapters` loops over `cfg.Sources` calling `buildSource(src)` for
   each. A `buildSource` error is `slog.Error`-logged (source name/type,
   never the URL) and that source is skipped — same log-and-continue as
@@ -87,23 +102,39 @@ merging, and deriving today/homework/upcoming views all live in
   `Owners`, then the nil-safe lunch and weather fetches (same
   log-and-continue `slog.Error` messages). One `now` is threaded through
   `Collect`, `Weather`, and the view constructor so a render sees a single
-  consistent instant. `handleIndex` calls it with `r.Context()`; the PNG
-  export calls it with `context.Background()`. New output targets should
+  consistent instant. `handleIndex` calls it with `r.Context()`; `showOnce`
+  (both eink modes) calls it with `context.Background()`. New output targets should
   reuse it rather than re-fetch inline.
 - `-eink-png <path>` (optional) switches `main()` into one-shot export mode
-  after sources are built: `exportEinkPNG` fetches once, builds
-  `eink.NewView` → `eink.Render`, and `writePNG` encodes the 480x800 frame
-  (returning the `Close` error, joined with any encode error). If
-  `png.Encode` fails after `os.Create` succeeded, `writePNG` removes the
-  file so a display reading that path never sees a truncated PNG. Note that
-  `os.Create` truncates first, so a previous good frame at the path is gone
-  either way — there is no write-to-temp-and-rename. Success logs
-  `wrote e-paper frame` and returns before the HTTP server starts (exit 0);
-  any failure logs `writing e-paper frame` with the cause and exits 1.
-  Nothing is written to stdout. The mode never serves HTTP, and it does
-  not change `-config`: the flag is still required and parsed exactly as in
-  server mode (ADR-0001). Rendering itself is in
-  [eink-adapter.md](eink-adapter.md).
+  after sources are built: it calls `showOnce(context.Background(),
+  pngpanel.New(path), …, time.Now())`. `showOnce(ctx, panel eink.Panel,
+  collector, lunch, weather, now)` is the shared one-shot helper for any
+  `eink.Panel`: `fetchDashboard` → `eink.NewView` → `eink.Render` →
+  `panel.Full`, then it **always** calls `panel.Sleep()` and
+  `panel.Close()`, even when the view build or `Full` failed, and returns
+  all errors joined (`errors.Join`), each wrapped (`building e-paper view`,
+  `full refresh`, `sleeping panel`, `closing panel`). The PNG writing itself
+  lives in `eink/pngpanel` (see [eink-adapter.md](eink-adapter.md)).
+  Success logs `wrote e-paper frame` and returns before the HTTP server
+  starts (exit 0); any failure logs `writing e-paper frame` with the path
+  and cause and exits 1. Nothing is written to stdout. The mode never
+  serves HTTP, and it does not change `-config`: the flag is still required
+  and parsed exactly as in server mode (ADR-0001).
+- `-eink-panel` (bool, with `-cable left|right`) is the hardware
+  counterpart: `epd.New(cable)`; if that fails it logs `opening e-paper
+  panel` and exits 1 (no panel to sleep — on the Mac this is the stub's
+  "only supported on linux/arm" error). Otherwise it runs the same
+  `showOnce`, logs `drawing e-paper frame` + exit 1 on error, or
+  `drew e-paper frame` and returns. It never starts the HTTP server.
+  `-eink-png` and `-eink-panel` are mutually exclusive: giving both is a
+  `parseFlags` error and exits 2 before any config is loaded. In both
+  modes the panel is always slept and closed once it exists (`showOnce`
+  does it even after a failed view build or `Full`); only a failed
+  `epd.New` skips them, as there is no panel.
+  `cmd` importing `epd` is what links the real driver on linux/arm; the host
+  build only compiles the stub (`go list -deps ./cmd/family-dashboard` has
+  no `epd7in5v2`). Cross-check with
+  `GOOS=linux GOARCH=arm GOARM=6 CGO_ENABLED=0 go build ./cmd/family-dashboard`.
 - The `ownerNames` free function is gone — `Collector.Owners()` replaces it,
   computed once in `NewCollector` from the same `NamedSource` pairs used for
   fetching, so the owner list and the fetch list can't drift apart.
@@ -113,18 +144,20 @@ merging, and deriving today/homework/upcoming views all live in
   (log-and-continue on a failing source, same as the old per-request loop).
 - Tests split along the same boundary: `config/config_test.go` (`package
   config_test`) covers `Load`; `cmd/family-dashboard/main_test.go`
-  (`package main`) covers `buildSource`, `buildAdapters`, `fetchDashboard`
-  (stub lunch/weather sources: nil, failing, succeeding), and `writePNG`
-  (decode-back 480x800, missing-directory error, encode failure removes the
-  partial file);
+  (`package main`) covers `parseFlags`, `buildSource`, `buildAdapters`, `fetchDashboard`
+  (stub lunch/weather sources: nil, failing, succeeding), and `showOnce`
+  (with `pngpanel.New(tmp)` decoding a 480x800 PNG, and with a call-recording
+  fake `eink.Panel`: `Full` once with a 480x800 frame, then `Sleep`, then
+  `Close`, also when `Full` fails);
   `collector_test.go` (package `dashboard`) covers the fetch/merge/filter
   logic that used to live inline in `handleIndex`.
 
 ## Gotchas & Failure Modes
 - Only `config.Load` failure (missing/malformed config file) and
   `http.ListenAndServe` failure are fatal (`os.Exit(1)`); a failed
-  `-eink-png` export also exits 1. Missing `-config` flag is a usage
-  error (`os.Exit(2)`, per ADR-0001). Individual source
+  `-eink-png` export or `-eink-panel` draw also exits 1. Any `parseFlags`
+  error (missing `-config` per ADR-0001, both eink flags, bad `-cable`) is a
+  usage error (`os.Exit(2)`). Individual source
   build or fetch failures are not fatal by design — they degrade the
   dashboard (fewer sources), not the whole server.
 - Adapter construction (`buildSource`) now happens once at startup instead

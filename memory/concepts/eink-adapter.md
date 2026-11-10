@@ -1,11 +1,11 @@
 ---
 type: component
-tags: [eink, epaper, render, adapter, hexagonal, font]
-summary: eink/ e-paper adapter — Stockholm view-model, 1-bit portrait 480x800 renderer (Go Mono, single column, clock/weather band, two-line wrapped entries, content-height sections trimmed by priority, ClockRect top/bottom on multiples of 8), plus verified Waveshare 7.5" V2 driver facts for the panel adapter.
+tags: [eink, epaper, render, adapter, hexagonal, font, panel, port, pngpanel, epd, rotation, build-constraints, cable]
+summary: eink/ e-paper adapter — Panel port (Full/Sleep/Close) with three adapters (pngpanel PNG writer, linux/arm Waveshare 7.5" V2 epd driver, non-linux/arm epd stub), pure rotate.go (-cable left/right mapping), driver call order and rotate_ms/refresh_ms logs; Stockholm view-model, 1-bit portrait 480x800 renderer (Go Mono, single column, clock/weather band, two-line wrapped entries, content-height sections trimmed by priority, ClockRect top/bottom on multiples of 8), plus verified driver facts.
 links: [docs/arch/adr/0002-dual-display-adapters-over-shared-interface.md, docs/arch/adr/0003-eink-panel-port-and-refresh-policy.md, docs/arch/adr/0004-portrait-frame-rotated-by-panel-adapter.md, docs/raspberry-pi-setup.md, dashboard-page.md, composition-root.md, eink-view.md]
 updated: 2026-11-10
 generated: { by: worker, at: 2026-11-10T00:00:00Z }
-verified: [{ by: "human", at: 2026-11-10 }, { by: "human", at: 2026-11-10 }, { by: "human", at: 2026-11-10 }]
+verified: [{ by: "human", at: 2026-11-10 }, { by: "human", at: 2026-11-10 }, { by: "human", at: 2026-11-10 }, { by: "human", at: 2026-11-10 }]
 ---
 
 # E-paper Adapter (`eink/`)
@@ -18,10 +18,14 @@ the panel's native landscape orientation
 ([ADR-0004](../../docs/arch/adr/0004-portrait-frame-rotated-by-panel-adapter.md)). Per
 [ADR-0002](../../docs/arch/adr/0002-dual-display-adapters-over-shared-interface.md)
 it is deliberately independent of `web/`: it has its own view-model and
-renderer and imports nothing from `web`. Today the frame is only written to
-a PNG (`-eink-png`, see [composition-root.md](composition-root.md)); the
-panel driver comes later, behind the port in
-[ADR-0003](../../docs/arch/adr/0003-eink-panel-port-and-refresh-policy.md).
+renderer and imports nothing from `web`. Frames are shown through the
+`Panel` port (`eink/panel.go`, per
+[ADR-0003](../../docs/arch/adr/0003-eink-panel-port-and-refresh-policy.md)).
+There are two real adapters: `eink/pngpanel` writes the frame to a PNG
+(`-eink-png`), and `eink/epd` drives the Waveshare panel on linux/arm
+(`-eink-panel`), both one-shot (see
+[composition-root.md](composition-root.md) and "Panel port and adapters"
+below). A refresh loop with partial clock refreshes comes later.
 
 ## Key Rules & Mechanics
 - `NewView` (`eink/view.go`, details in [eink-view.md](eink-view.md))
@@ -115,6 +119,12 @@ panel driver comes later, behind the port in
   - v0.37.0–v0.45.0 declare `go 1.25.0`. Any of them makes `go mod tidy`
     rewrite our `go 1.25` directive, which is why we pin v0.36.0.
   - v0.46.0 and later declare `go 1.26.0` and need Go 1.26.
+  - Our directive is now `go 1.25.0` anyway: `github.com/ditrytus/epd7in5v2`
+    v0.1.0 declares `go 1.25.0` in its own `go.mod`, so `go mod tidy`
+    rewrote ours when the panel driver was added. This is the same Go
+    1.25 language version, not a new minimum, so it is accepted. The
+    v0.36.0 pin still matters for the second threshold: v0.46.0+ would
+    raise it to `go 1.26.0`. x/image is still at v0.36.0.
 - Glyph coverage: Go Mono has åäö, `…`, `·`, `°`, `–`, `—`
   (`TestFaces_HaveGlyphs`); any new symbol must be added to that test, or it
   renders as a missing-glyph box.
@@ -122,7 +132,78 @@ panel driver comes later, behind the port in
   232 px clock rect. Changing the clock font or size means resizing `ClockRect` (keeping
   Y edges on multiples of 8) and rechecking the weather width beside it.
 
-## Hardware and driver facts for the later panel adapter
+## Panel port and adapters
+- The port is `eink.Panel` (`eink/panel.go`): `Full(frame image.Image)
+  error`, `Sleep() error`, `Close() error`. Frames are portrait
+  `ScreenWidth` x `ScreenHeight` as drawn by `Render`; the adapter does
+  any rotation. It is this small on purpose: the current slice only
+  shows one frame and exits, so it needs nothing else. The partial
+  refresh of `ClockRect()` that ADR-0003 puts in the port is added with
+  the refresh loop, not before.
+- Callers call `Sleep` after every update and `Close` when done; the
+  one-shot helper `showOnce` always calls both, even after a failure.
+- There are three adapters:
+  - `eink/pngpanel`: `New(path)` writes each `Full` frame to `path` as a
+    PNG. It rejects a frame that is not 480x800 before creating the file
+    (the error names the bounds) and removes the partial file if
+    `png.Encode` fails. `Sleep` and `Close` are no-ops. It imports `eink`
+    only for the size constants.
+  - `eink/epd` on linux/arm drives the Waveshare 7.5" V2 through
+    `github.com/ditrytus/epd7in5v2` v0.1.0.
+  - `eink/epd` elsewhere is a stub with the same exported API, whose
+    `New`, `Full`, `Sleep` and `Close` all return "e-paper panel is only
+    supported on linux/arm".
+- Build-constraint split in `eink/epd`:
+  - `rotate.go` has no build constraint. It holds the pure half (`Cable`,
+    `ParseCable`, `Rotate`) and is tested on every platform.
+  - `device.go` has no build constraint either. It holds `devicePanel`,
+    the call order and error wrapping behind a small `device` interface,
+    so `device_test.go` tests it on the host with a fake.
+  - `epd.go` (`//go:build linux && arm`) is thin. It is the only file
+    importing the driver and only passes `epd7in5v2.NewEPD()` and
+    `epd7in5v2.ScreenBounds` to `openDevice`.
+  - `epd_other.go` (`//go:build !(linux && arm)`) is the stub. The host
+    build never links the driver or periph.
+- `-cable left|right` (default `left`, parsed by `ParseCable`, exactly
+  `"left"`/`"right"`) names the side of the hung portrait frame where the
+  ribbon cable exits, and picks the rotation direction. `Rotate(frame,
+  cable)` rejects anything but 480x800, reads relative to `Bounds().Min`,
+  and returns an 800x480 `*image.Gray` thresholded at 128. For a portrait
+  pixel (px, py), the native pixel is:
+  - `CableLeft`: `X = py`, `Y = 479 - px`
+  - `CableRight`: `X = 799 - py`, `Y = px`
+
+  The portrait `ClockRect()` Y edges 88/176 therefore become native X
+  edges 88/176 (left) or 624/712 (right), both byte-aligned
+  (`TestRotate_ClockRect`). Which name matches which physical cable side
+  has not been checked on the panel yet. If the image comes out upside
+  down, use the other value.
+- Driver call order (`devicePanel`):
+  - `New(cable)` calls `GPIOInit()` once. If it fails, `New` calls
+    `Close()` and joins both errors.
+  - `Full` runs `Rotate`, checks the result against `ScreenBounds`, then
+    calls `Init()` before every `DisplayImage`. Every `Full` is a full
+    refresh (about 4 s).
+  - `Sleep()` follows every update and `Close()` comes last. Both are
+    called by the caller (`showOnce`), not by `Full`.
+  - Errors are wrapped with the step name (`epd: gpio init`, `epd:
+    rotate`, `epd: init`, `epd: display`, `epd: sleep`, `epd: close`).
+- `Full` logs `rotated e-paper frame` with `rotate_ms` and `cable`, then
+  `full refresh` with `refresh_ms` (Init + DisplayImage).
+- The sensors only build for the host. Check `epd.go` changes and build
+  the Pi binary with
+  `GOOS=linux GOARCH=arm GOARM=6 CGO_ENABLED=0 go build ./... && GOOS=linux GOARCH=arm GOARM=6 go vet ./...`
+  and `GOOS=linux GOARCH=arm GOARM=6 CGO_ENABLED=0 go build -o family-dashboard-pi ./cmd/family-dashboard`.
+- Driver gotcha (v0.1.0): `closeGPIO` (`gpio.go:81-91` in the driver
+  module) returns early only when all of `pwr`, `dc` and `rst` are nil,
+  and otherwise calls `Out(gpio.Low)` on all three. `GPIOInit`
+  (`gpio.go:52-58`) sets them in the order `rst`, `dc`, `pwr` and stops at
+  the first failed lookup (`initPinOut`, `gpio.go:105-118`) without
+  closing anything. So if `rst` is found but `dc` or `pwr` is not, the
+  `Close()` in `New` calls `Out` on a nil interface and panics. Not seen
+  on the Pi Zero W.
+
+## Hardware and driver facts for the panel adapter
 Verified on a Pi Zero W with the Waveshare 7.5" V2 and
 `github.com/ditrytus/epd7in5v2` v0.1.0 (see
 [raspberry-pi-setup.md](../../docs/raspberry-pi-setup.md)):

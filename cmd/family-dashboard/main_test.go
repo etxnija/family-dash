@@ -3,8 +3,10 @@ package main
 import (
 	"context"
 	"errors"
+	"flag"
 	"image"
 	"image/png"
+	"io"
 	"os"
 	"path/filepath"
 	"slices"
@@ -14,7 +16,87 @@ import (
 	dashboard "family-dashboard"
 	"family-dashboard/config"
 	"family-dashboard/eink"
+	"family-dashboard/eink/epd"
+	"family-dashboard/eink/pngpanel"
 )
+
+func TestParseFlags(t *testing.T) {
+	tests := []struct {
+		name string
+		args []string
+		want options
+	}{
+		{
+			name: "only config",
+			args: []string{"-config", "c.json"},
+			want: options{config: "c.json", addr: ":8080", cable: epd.CableLeft},
+		},
+		{
+			name: "addr and png",
+			args: []string{"-config", "c.json", "-addr", ":9090", "-eink-png", "f.png"},
+			want: options{config: "c.json", addr: ":9090", einkPNG: "f.png", cable: epd.CableLeft},
+		},
+		{
+			name: "panel default cable is left",
+			args: []string{"-config", "c.json", "-eink-panel"},
+			want: options{config: "c.json", addr: ":8080", einkPanel: true, cable: epd.CableLeft},
+		},
+		{
+			name: "panel cable left",
+			args: []string{"-config", "c.json", "-eink-panel", "-cable", "left"},
+			want: options{config: "c.json", addr: ":8080", einkPanel: true, cable: epd.CableLeft},
+		},
+		{
+			name: "panel cable right",
+			args: []string{"-config", "c.json", "-eink-panel", "-cable", "right"},
+			want: options{config: "c.json", addr: ":8080", einkPanel: true, cable: epd.CableRight},
+		},
+		{
+			// -cable is ignored without -eink-panel, even if invalid.
+			name: "invalid cable without panel is ignored",
+			args: []string{"-config", "c.json", "-cable", "up"},
+			want: options{config: "c.json", addr: ":8080", cable: epd.CableLeft},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := parseFlags(tt.args, io.Discard)
+			if err != nil {
+				t.Fatalf("parseFlags(%q) unexpected error: %v", tt.args, err)
+			}
+			if got != tt.want {
+				t.Errorf("parseFlags(%q) = %+v, want %+v", tt.args, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestParseFlags_Errors(t *testing.T) {
+	tests := []struct {
+		name string
+		args []string
+	}{
+		{name: "missing config", args: []string{"-eink-panel"}},
+		{name: "both eink flags", args: []string{"-config", "c.json", "-eink-png", "f.png", "-eink-panel"}},
+		{name: "panel invalid cable", args: []string{"-config", "c.json", "-eink-panel", "-cable", "up"}},
+		{name: "unknown flag", args: []string{"-config", "c.json", "-bogus"}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got, err := parseFlags(tt.args, io.Discard); err == nil {
+				t.Fatalf("parseFlags(%q) = %+v, nil error, want error", tt.args, got)
+			}
+		})
+	}
+}
+
+func TestParseFlags_Help(t *testing.T) {
+	if _, err := parseFlags([]string{"-h"}, io.Discard); !errors.Is(err, flag.ErrHelp) {
+		t.Errorf("parseFlags(-h) error = %v, want flag.ErrHelp", err)
+	}
+}
 
 func TestBuildSource(t *testing.T) {
 	tests := []struct {
@@ -173,72 +255,85 @@ func TestFetchDashboard(t *testing.T) {
 	}
 }
 
-func TestWritePNG(t *testing.T) {
-	view, err := eink.NewView(nil, nil, nil, nil, nil, nil, time.Date(2026, 11, 10, 8, 0, 0, 0, time.UTC))
-	if err != nil {
-		t.Fatalf("eink.NewView() unexpected error: %v", err)
+func TestShowOnce_PNGPanel(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "frame.png")
+	now := time.Date(2026, 11, 10, 8, 0, 0, 0, time.UTC)
+
+	if err := showOnce(context.Background(), pngpanel.New(path), dashboard.NewCollector(nil), nil, nil, now); err != nil {
+		t.Fatalf("showOnce() unexpected error: %v", err)
 	}
-	img := eink.Render(view)
-	dir := t.TempDir()
+
+	f, err := os.Open(path)
+	if err != nil {
+		t.Fatalf("opening written PNG: %v", err)
+	}
+	decoded, err := png.Decode(f)
+	if cerr := f.Close(); cerr != nil {
+		t.Fatalf("closing written PNG: %v", cerr)
+	}
+	if err != nil {
+		t.Fatalf("png.Decode() unexpected error: %v", err)
+	}
+	if b := decoded.Bounds(); b.Dx() != 480 || b.Dy() != 800 {
+		t.Errorf("decoded bounds = %v, want 480x800", b)
+	}
+}
+
+// fakePanel records the calls made to it; fullErr is returned from Full.
+type fakePanel struct {
+	calls   []string
+	frames  []image.Image
+	fullErr error
+}
+
+func (p *fakePanel) Full(frame image.Image) error {
+	p.calls = append(p.calls, "Full")
+	p.frames = append(p.frames, frame)
+	return p.fullErr
+}
+
+func (p *fakePanel) Sleep() error {
+	p.calls = append(p.calls, "Sleep")
+	return nil
+}
+
+func (p *fakePanel) Close() error {
+	p.calls = append(p.calls, "Close")
+	return nil
+}
+
+func TestShowOnce_PanelCalls(t *testing.T) {
+	now := time.Date(2026, 11, 10, 8, 0, 0, 0, time.UTC)
+	fullErr := errors.New("panel busy")
 
 	tests := []struct {
 		name    string
-		path    string
-		img     image.Image // nil means the rendered frame
-		wantErr bool
+		fullErr error
 	}{
-		{
-			name: "writes decodable 480x800 frame",
-			path: filepath.Join(dir, "frame.png"),
-		},
-		{
-			name:    "missing directory",
-			path:    filepath.Join(dir, "missing", "frame.png"),
-			wantErr: true,
-		},
-		// png.Encode rejects images with zero width or height ("invalid
-		// image size"), so this fails after os.Create has made the file.
-		{
-			name:    "encode failure removes partial file",
-			path:    filepath.Join(dir, "empty.png"),
-			img:     image.NewGray(image.Rect(0, 0, 0, 0)),
-			wantErr: true,
-		},
+		{name: "successful refresh"},
+		{name: "failing refresh still sleeps and closes", fullErr: fullErr},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			var in image.Image = img
-			if tt.img != nil {
-				in = tt.img
-			}
-			err := writePNG(tt.path, in)
-			if tt.wantErr {
-				if err == nil {
-					t.Fatalf("writePNG(%q) = nil error, want error", tt.path)
-				}
-				if _, statErr := os.Stat(tt.path); !errors.Is(statErr, os.ErrNotExist) {
-					t.Errorf("os.Stat(%q) error = %v, want file not to exist", tt.path, statErr)
-				}
-				return
-			}
-			if err != nil {
-				t.Fatalf("writePNG(%q) unexpected error: %v", tt.path, err)
-			}
+			panel := &fakePanel{fullErr: tt.fullErr}
+			err := showOnce(context.Background(), panel, dashboard.NewCollector(nil), nil, nil, now)
 
-			f, err := os.Open(tt.path)
-			if err != nil {
-				t.Fatalf("opening written PNG: %v", err)
+			if tt.fullErr != nil {
+				if !errors.Is(err, tt.fullErr) {
+					t.Errorf("showOnce() error = %v, want it to wrap %v", err, tt.fullErr)
+				}
+			} else if err != nil {
+				t.Errorf("showOnce() unexpected error: %v", err)
 			}
-			decoded, err := png.Decode(f)
-			if cerr := f.Close(); cerr != nil {
-				t.Fatalf("closing written PNG: %v", cerr)
+			if want := []string{"Full", "Sleep", "Close"}; !slices.Equal(panel.calls, want) {
+				t.Errorf("panel calls = %v, want %v", panel.calls, want)
 			}
-			if err != nil {
-				t.Fatalf("png.Decode() unexpected error: %v", err)
+			if len(panel.frames) != 1 {
+				t.Fatalf("Full() called with %d frames, want 1", len(panel.frames))
 			}
-			if b := decoded.Bounds(); b.Dx() != 480 || b.Dy() != 800 {
-				t.Errorf("decoded bounds = %v, want 480x800", b)
+			if b := panel.frames[0].Bounds(); b.Dx() != eink.ScreenWidth || b.Dy() != eink.ScreenHeight {
+				t.Errorf("Full() frame bounds = %v, want %dx%d", b, eink.ScreenWidth, eink.ScreenHeight)
 			}
 		})
 	}
