@@ -192,6 +192,40 @@ Notes:
 - To find the Pi on a new network, try `familydash.local` first (mDNS); otherwise look for `familydash` in the
   router's device list.
 
+## 10. Deploy and run as a service
+
+Everything below runs from the Mac, in the repo root. `make help` lists the targets. The Mac needs the SSH alias
+`familydash` with key login. The Pi user needs passwordless `sudo` (the default for the first user on Raspberry
+Pi OS) and membership of the `spi` and `gpio` groups.
+
+- `make doctor` checks SSH, passwordless sudo and the groups. Run it first.
+- `make deploy` runs the tests and the linter, cross-compiles, copies the binary and `sources.local.json` to
+  `~/family-dash/` on the Pi, installs and enables the systemd unit `family-dashboard`, restarts it and shows the status.
+  It is also the first-time install.
+- `make deploy-config` copies only the config and restarts. Use it when a calendar link changes.
+- `make start`, `make stop`, `make restart`, `make status`, `make logs` (follow) and `make logs-last`.
+
+How it works:
+
+- The unit (`deploy/family-dashboard.service.in`) runs
+  `family-dashboard-pi -config ... -eink-panel -cable left -eink-loop -eink-full-every 30m`, so there is a full refresh
+  at least every 30 minutes and the clock is refreshed partially every minute. Data is fetched every 30 minutes (the
+  default). To change a flag, edit the unit and run `make deploy`.
+- It starts at power-on after the network is up, and restarts after a crash (`Restart=on-failure`, 10 s). `make stop`
+  sends SIGTERM; the loop puts the panel to sleep, so the last image stays on the screen.
+- Files are replaced with a rename, so an update never leaves a half-copied binary. The config is written with mode 600
+  because it holds private calendar URLs. Never print it.
+- Logs are JSON lines in the journal (`journalctl -u family-dashboard`).
+
+Gotchas:
+
+- Only one process can drive the panel. Stop any manual run (`./family-dashboard-pi ...`, spikes) before starting the
+  service, or it fails with "GPIO24 device or resource busy".
+- The Pi Zero has no battery-backed clock. Right after power-on the time can be wrong until the network sync finishes; the
+  loop follows the wall clock, so it corrects itself on the next minute.
+- Old copies from the manual steps (`~/family-dashboard-pi`, `~/sources.local.json`) are not used by the service and can be
+  deleted.
+
 ## Troubleshooting: green LED flash codes (Pi 1/2/3/Zero)
 
 A repeating fixed count of flashes followed by a pause is an error code:
@@ -211,9 +245,7 @@ then verify `kernel.img` exists on `bootfs`.
 - Go driver vs. a separate Python renderer: the hardware supports both; see ADR-0002 and the e-ink adapter design.
 - Refresh strategy: partial refresh of the clock every minute, full refresh of the rest about hourly. Partial-refresh
   timing and ghosting over a longer period are not yet measured.
-- Refresh loop: the binary only does a one-shot refresh today (section 8); the minute clock, hourly full refresh and
-  partial refresh of the clock rectangle are not implemented yet.
-- Deployment workflow: cross-compiling and copying a binary works by hand (sections 7-8); a service/autostart setup
-  and a repeatable deploy command are not yet defined.
+- Refresh loop and service: implemented and deployed with `make deploy` (section 10). Ghosting over a longer period
+  (days) is not yet measured.
 - Switching networks is documented in section 9, but joining the home network by itself at power-on is not yet
   verified.

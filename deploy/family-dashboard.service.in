@@ -1,0 +1,21 @@
+# systemd unit for family-dash on the Pi. Not used as-is: `make install-service`
+# fills in the @...@ placeholders over SSH and installs it. Changing the flags
+# below takes `make install-service restart` (or just `make deploy`).
+[Unit]
+Description=Family dashboard (e-paper)
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+# The user must be in the spi and gpio groups (the first user on Raspberry Pi OS is).
+User=@USER@
+WorkingDirectory=@DIR@
+ExecStart=@DIR@/@BIN@ -config @DIR@/@CONFIG@ -eink-panel -cable left -eink-loop -eink-full-every 30m
+Restart=on-failure
+RestartSec=10
+# SIGTERM makes the loop put the panel to sleep and close it (a full refresh can take ~4 s).
+TimeoutStopSec=30
+
+[Install]
+WantedBy=multi-user.target
