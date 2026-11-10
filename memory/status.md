@@ -423,5 +423,25 @@ Session-to-session progress log. Distinct from AGENTS.md (stable rules).
 
 **Run metrics:** 27 driver call(s), $7.7441, session 4c69e1ba-bc0d-4cbb-9477-d72aea087cf4, cache read 5137752 / write 855373 / input 304 (share 86%)
 
+## 2026-11-10 — eink portrait 480x800 single column
+
+- Switched `eink` to a portrait 480x800 single column: two-line header (date + week, owners below), clock/weather band (`ClockRect()` X 16–248 / Y 88–176 with Y edges on multiples of 8, 1 px vertical rule at `weatherRuleX`, weather on its own `weatherRect` sub-image), then SKOLLUNCH/IDAG/LÄXOR OCH PROV/KOMMANDE DAGAR stacked with limits 4/6/5/5 and `sectionGap` 16; tests cover per-section side strips, `ClockRect` Y alignment and weather separation, a no-clock render leaving `ClockRect` white, and section order. The band's bottom rule reuses the SKOLLUNCH rule at `lunchTop` (`sectionGap` below the `bandBottom` constant, not a separate `bandRuleY`), and the vertical weather rule ends there so the two meet; `bodyDescent = 4` is a named constant checked against the face. ADR-0004 is referenced in comments but not yet in `docs/arch/adr/`. `gofmt`, `go vet`, `go test ./... -race`, `golangci-lint run` all pass.
+
+## 2026-11-10 — eink two-line wrapped entries with line budgets
+
+- Replaced `fitParts`/`limitRows` with `wrapEntry` (≤ `maxEntryLines` = 2 lines, greedy breaks at spaces, hanging indent of one space per prefix rune, unbreakable suffix ending the last line, "…" for overflow and over-wide words, one-line `fitText` fallback when prefix+suffix don't fit) and `budgetLines` (whole entries within budget−1 lines, then "+N till" counting hidden entries); `maxLunchRows`/… became `lunchLineBudget` 4, `todayLineBudget` 6, `homeworkLineBudget` 5, `upcomingLineBudget` 5 (section tops unchanged). Tests: table-driven `TestBudgetLines`, `TestWrapEntry`, reworked stress/suffix tests, and `TestLayout_SectionsFitAboveBottomMargin` now checks every section against the next rule. Deviation: the plan expected one-line lunch entries and `budget` lines per stress section; the 300-rune stress lunch also wraps to two lines and even budgets (4, 6) then show budget−1 lines, so the test derives lines and N from the measured entry size. `gofmt`, `go vet`, `go test ./... -race`, `golangci-lint run` all pass.
+
+## 2026-11-10 — eink wrap review fixes
+
+- Stress lunch is now a one-line dish; `TestVisibleRows_StressLimits` derives each section's line count and "+N till" from its budget and lines per entry (shown = whole entries in budget-1 lines, N = entries - shown; the even-budget gap for events is named in the case), so a regression in the budget logic fails the test. It also checks entry line structure.
+- `TestWrapEntry` gains exact-line cases: heldag/time suffixes whole on line 2, last word carried to line 2 by the suffix, a single word cut on line 2, and the cut boundary (a 20-rune word filling a full line after "07:15  Kaj – " stays whole; 21 runes is cut).
+- No `wrapEntry` change: the review asked to move a word that fits a full line but not after the prefix to line 2, but the hanging indent is as wide as the prefix (Go Mono, 9 px/rune), so both have the same room and the existing `n == 0` cut already applies only to words wider than `maxWidth` minus the indent. The reported `"Fotbollsträn…"` output doesn't occur at 300 px (`"Fotbollsträning på"` fits on line 1).
+- Reworded the `budgetLines` rule in `eink-adapter.md` and rewrapped the long `SubImage` line. `gofmt`, `go vet`, `go test ./...`, `golangci-lint run` pass.
+
+## 2026-11-10 — eink portrait docs
+
+- Brought `eink-adapter.md` (summary, ADR-0004 link, landscape-native/rotation gotcha, native-X → portrait-Y note on the `rect` driver fact), `eink-view.md` (renderer wraps rows from prefix/body/suffix, view-model unchanged), the concept index entry and README's `layout.go` line in line with the portrait 480x800 wrapping renderer; most Key Rules/clock-gotcha rewrites were already done by tasks 1–2.
+- Also added `docs/arch/adr/0004-portrait-frame-rotated-by-panel-adapter.md` in this change, outside the four listed files, on purpose: it was not on the branch yet, and `eink-adapter.md` links to it, so without it the link would not resolve.
+- Docs only: no Go code or tests change in this task.
 
 **Run metrics:** 19 driver call(s), $5.1369, session 8c5df718-24dc-46e1-b48b-3a07490f94ba, cache read 3649921 / write 623177 / input 206 (share 85%)

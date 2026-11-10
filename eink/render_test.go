@@ -1,6 +1,7 @@
 package eink
 
 import (
+	"fmt"
 	"image"
 	"strings"
 	"testing"
@@ -35,7 +36,8 @@ func emptyView(t *testing.T) View {
 	return v
 }
 
-// stressView has 20 rows in every section and 300-rune Swedish summaries.
+// stressView has 20 rows in every section, one-line lunch dishes and
+// 300-rune Swedish summaries.
 func stressView() View {
 	long := strings.Repeat("Läxa åäöÅÄÖ ", 25)
 	v := View{
@@ -46,7 +48,7 @@ func stressView() View {
 		Weather:   WeatherView{Temperature: "-88°" + long, Lines: []string{long, long + " · " + long, long, long, long}},
 	}
 	for i := range 20 {
-		v.Lunch = append(v.Lunch, long)
+		v.Lunch = append(v.Lunch, "Köttbullar med potatismos och lingon")
 		v.Events = append(v.Events, EventRow{Time: "heldag", Owner: "Lillian", Summary: long, Location: long})
 		v.Upcoming = append(v.Upcoming, UpcomingRow{Weekday: "Tors", Time: "heldag", Owner: "Lillian", Summary: long, Location: long})
 		owner := "Kaj"
@@ -66,7 +68,6 @@ func TestStressView_TextLength(t *testing.T) {
 		name string
 		text string
 	}{
-		{name: "lunch", text: v.Lunch[0]},
 		{name: "event summary", text: v.Events[0].Summary},
 		{name: "homework summary", text: v.Homework[0].Items[0].Summary},
 		{name: "upcoming summary", text: v.Upcoming[0].Summary},
@@ -94,7 +95,7 @@ func TestRender_BoundsAndBinaryPixels(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			img := Render(tt.view)
-			if got, want := img.Bounds(), image.Rect(0, 0, 800, 480); got != want {
+			if got, want := img.Bounds(), image.Rect(0, 0, 480, 800); got != want {
 				t.Fatalf("Bounds = %v, want %v", got, want)
 			}
 			for i, p := range img.Pix {
@@ -119,10 +120,10 @@ func TestRender_EmptyStatesDrawn(t *testing.T) {
 		name string
 		area image.Rectangle
 	}{
-		{name: "lunch", area: rowRect(leftColumnRect, firstRowBaselineY(lunchTop))},
-		{name: "idag", area: rowRect(rightColumnRect, firstRowBaselineY(todayTop))},
-		{name: "läxor", area: rowRect(rightColumnRect, firstRowBaselineY(homeworkTop))},
-		{name: "kommande", area: rowRect(rightColumnRect, firstRowBaselineY(upcomingTop))},
+		{name: "lunch", area: rowRect(contentRect, firstRowBaselineY(lunchTop))},
+		{name: "idag", area: rowRect(contentRect, firstRowBaselineY(todayTop))},
+		{name: "läxor", area: rowRect(contentRect, firstRowBaselineY(homeworkTop))},
+		{name: "kommande", area: rowRect(contentRect, firstRowBaselineY(upcomingTop))},
 	}
 
 	for _, tt := range tests {
@@ -138,15 +139,32 @@ func TestRender_StressStaysContained(t *testing.T) {
 	img := Render(stressView())
 
 	inner := image.Rect(borderThickness, borderThickness, ScreenWidth-borderThickness, ScreenHeight-borderThickness)
-	tests := []struct {
+	type area struct {
 		name string
 		area image.Rectangle
-	}{
-		{name: "gutter below header rule", area: image.Rect(leftColumnX1, bodyTop, rightColumnX0, inner.Max.Y)},
+	}
+	tests := []area{
 		{name: "top margin", area: image.Rect(inner.Min.X, inner.Min.Y, inner.Max.X, outerMargin)},
-		{name: "bottom margin", area: image.Rect(inner.Min.X, ScreenHeight-outerMargin, inner.Max.X, inner.Max.Y)},
-		{name: "left margin", area: image.Rect(inner.Min.X, inner.Min.Y, outerMargin, inner.Max.Y)},
-		{name: "right margin", area: image.Rect(ScreenWidth-outerMargin, inner.Min.Y, inner.Max.X, inner.Max.Y)},
+		{name: "bottom margin", area: image.Rect(inner.Min.X, contentBottom, inner.Max.X, inner.Max.Y)},
+		{name: "left margin", area: image.Rect(inner.Min.X, inner.Min.Y, contentX0, inner.Max.Y)},
+		{name: "right margin", area: image.Rect(contentX1, inner.Min.Y, inner.Max.X, inner.Max.Y)},
+	}
+	// Each section's Y range runs from its rule to the next section's rule
+	// (or contentBottom); both strips beside the content column stay white.
+	sections := []struct {
+		name   string
+		y0, y1 int
+	}{
+		{name: "lunch", y0: lunchTop, y1: todayTop},
+		{name: "idag", y0: todayTop, y1: homeworkTop},
+		{name: "läxor", y0: homeworkTop, y1: upcomingTop},
+		{name: "kommande", y0: upcomingTop, y1: contentBottom},
+	}
+	for _, s := range sections {
+		tests = append(tests,
+			area{name: s.name + " left of content", area: image.Rect(inner.Min.X, s.y0, contentX0, s.y1)},
+			area{name: s.name + " right of content", area: image.Rect(contentX1, s.y0, inner.Max.X, s.y1)},
+		)
 	}
 
 	for _, tt := range tests {
@@ -160,32 +178,46 @@ func TestRender_StressStaysContained(t *testing.T) {
 
 func TestVisibleRows_StressLimits(t *testing.T) {
 	v := stressView()
-	// Every stress section has 20 rows; a section with room for n shows
-	// n-1 of them plus "+N till" for the other 21-n.
+	width := contentRect.Dx()
+	// Every stress section has 20 entries: one-line lunch dishes and
+	// two-line events, homework and upcoming. A section shows whole entries
+	// in at most budget-1 lines plus "+N till". One-line lunch fills its
+	// budget; two-line entries leave a line empty when budget-1 is odd
+	// (events, budget 6: two entries + "+18 till" = 5 lines).
 	tests := []struct {
-		name     string
-		rows     []string
-		width    int
-		limit    int
-		wantLast string
+		name       string
+		rows       []string
+		entries    int
+		entryLines int
+		budget     int
 	}{
-		{name: "lunch", rows: lunchRows(v.Lunch, leftColumnRect.Dx()), width: leftColumnRect.Dx(), limit: maxLunchRows, wantLast: "+17 till"},
-		{name: "events", rows: eventRows(v.Events, rightColumnRect.Dx()), width: rightColumnRect.Dx(), limit: maxEventRows, wantLast: "+16 till"},
-		{name: "homework, flattened across groups", rows: homeworkRows(v.Homework, rightColumnRect.Dx()), width: rightColumnRect.Dx(), limit: maxHomeworkRows, wantLast: "+17 till"},
-		{name: "upcoming", rows: upcomingRows(v.Upcoming, rightColumnRect.Dx()), width: rightColumnRect.Dx(), limit: maxUpcomingRows, wantLast: "+16 till"},
+		{name: "lunch, one-line entries fill budget 4", rows: lunchRows(v.Lunch, width), entries: len(v.Lunch), entryLines: 1, budget: lunchLineBudget},
+		{name: "events, two-line entries leave budget 6 one short", rows: eventRows(v.Events, width), entries: len(v.Events), entryLines: 2, budget: todayLineBudget},
+		{name: "homework flattened across groups, two-line entries fill budget 5", rows: homeworkRows(v.Homework, width), entries: len(v.Homework), entryLines: 2, budget: homeworkLineBudget},
+		{name: "upcoming, two-line entries fill budget 5", rows: upcomingRows(v.Upcoming, width), entries: len(v.Upcoming), entryLines: 2, budget: upcomingLineBudget},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if len(tt.rows) != tt.limit {
-				t.Fatalf("got %d rows, want %d", len(tt.rows), tt.limit)
+			// Whole entries that fit in budget-1 lines, then "+N till".
+			shown := (tt.budget - 1) / tt.entryLines
+			wantLines := shown*tt.entryLines + 1
+			wantLast := fmt.Sprintf("+%d till", tt.entries-shown)
+			if len(tt.rows) != wantLines {
+				t.Fatalf("got %d lines %q, want %d", len(tt.rows), tt.rows, wantLines)
 			}
-			if last := tt.rows[len(tt.rows)-1]; last != tt.wantLast {
-				t.Errorf("last row = %q, want %q", last, tt.wantLast)
+			if last := tt.rows[len(tt.rows)-1]; last != wantLast {
+				t.Errorf("last line = %q, want %q", last, wantLast)
+			}
+			// Line 1 of every entry is flush left, later lines are indented.
+			for i, row := range tt.rows[:len(tt.rows)-1] {
+				if indented := strings.HasPrefix(row, " "); indented != (i%tt.entryLines != 0) {
+					t.Errorf("line %d %q: indented = %v, want entries of %d lines", i, row, indented, tt.entryLines)
+				}
 			}
 			for _, row := range tt.rows {
-				if w := font.MeasureString(bodyFace, row).Ceil(); w > tt.width {
-					t.Errorf("row %q is %dpx wide, want ≤ %d", row, w, tt.width)
+				if w := font.MeasureString(bodyFace, row).Ceil(); w > width {
+					t.Errorf("line %q is %dpx wide, want ≤ %d", row, w, width)
 				}
 			}
 		})
@@ -194,50 +226,150 @@ func TestVisibleRows_StressLimits(t *testing.T) {
 
 func TestVisibleRows_KeepSuffix(t *testing.T) {
 	long := strings.Repeat("Läxa ", 100)
+	last := func(rows []string) string { return rows[len(rows)-1] }
 	tests := []struct {
 		name       string
-		row        string
+		rows       []string
 		wantSuffix string
 	}{
 		{
 			name:       "homework keeps prov marker and day label",
-			row:        homeworkRows([]HomeworkGroup{{Initial: "K", Items: []HomeworkRow{{Summary: long, DayLabel: "fredag", IsProv: true}}}}, rightColumnRect.Dx())[0],
+			rows:       homeworkRows([]HomeworkGroup{{Initial: "K", Items: []HomeworkRow{{Summary: long, DayLabel: "fredag", IsProv: true}}}}, contentRect.Dx()),
 			wantSuffix: "… (Prov) – fredag",
 		},
 		{
 			name:       "upcoming keeps time",
-			row:        upcomingRows([]UpcomingRow{{Weekday: "Mån", Time: "18:30", Owner: "Kaj", Summary: long}}, rightColumnRect.Dx())[0],
+			rows:       upcomingRows([]UpcomingRow{{Weekday: "Mån", Time: "18:30", Owner: "Kaj", Summary: long}}, contentRect.Dx()),
 			wantSuffix: "…, 18:30",
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if !strings.HasSuffix(tt.row, tt.wantSuffix) {
-				t.Errorf("row %q does not end in %q", tt.row, tt.wantSuffix)
+			if len(tt.rows) != maxEntryLines {
+				t.Fatalf("got %d lines, want %d", len(tt.rows), maxEntryLines)
+			}
+			if !strings.HasSuffix(last(tt.rows), tt.wantSuffix) {
+				t.Errorf("last line %q does not end in %q", last(tt.rows), tt.wantSuffix)
 			}
 		})
 	}
 }
 
-func TestLimitRows(t *testing.T) {
+func TestBudgetLines(t *testing.T) {
 	tests := []struct {
-		name string
-		rows []string
-		max  int
-		want []string
+		name    string
+		entries [][]string
+		budget  int
+		want    []string
 	}{
-		{name: "fewer than max", rows: []string{"a", "b"}, max: 3, want: []string{"a", "b"}},
-		{name: "exactly max", rows: []string{"a", "b", "c"}, max: 3, want: []string{"a", "b", "c"}},
-		{name: "one over max", rows: []string{"a", "b", "c", "d"}, max: 3, want: []string{"a", "b", "+2 till"}},
-		{name: "none", rows: nil, max: 3, want: nil},
+		{name: "all fit", entries: [][]string{{"a"}, {"b1", "b2"}}, budget: 4, want: []string{"a", "b1", "b2"}},
+		{name: "exactly the budget", entries: [][]string{{"a1", "a2"}, {"b"}, {"c"}}, budget: 4, want: []string{"a1", "a2", "b", "c"}},
+		{name: "one-line entries overflow", entries: [][]string{{"a"}, {"b"}, {"c"}, {"d"}, {"e"}}, budget: 3, want: []string{"a", "b", "+3 till"}},
+		{
+			name:    "two-line entry past budget-1 hidden whole",
+			entries: [][]string{{"a"}, {"b"}, {"c1", "c2"}, {"d"}},
+			budget:  4,
+			want:    []string{"a", "b", "+2 till"},
+		},
+		{name: "no entries", entries: nil, budget: 4, want: nil},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := limitRows(tt.rows, tt.max)
+			got := budgetLines(tt.entries, tt.budget)
 			if strings.Join(got, "|") != strings.Join(tt.want, "|") || len(got) != len(tt.want) {
-				t.Errorf("limitRows = %q, want %q", got, tt.want)
+				t.Errorf("budgetLines = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestWrapEntry(t *testing.T) {
+	const maxWidth = 300
+	long := strings.Repeat("Fotbollsträning på Åvallen ", 20)
+	// Go Mono is 9 px per rune, so a line holds 33 runes. The indent is as
+	// wide as the prefix, so a full line after the indent has the same room
+	// as line 1 after the prefix: 33-13 = 20 runes for "07:15  Kaj – ".
+	word20 := strings.Repeat("å", 20)
+	indent12 := strings.Repeat(" ", 12)
+	tests := []struct {
+		name       string
+		prefix     string
+		body       string
+		suffix     string
+		wantLines  int
+		wantSuffix string   // the last line must end in this
+		cutWhole   bool     // prefix and suffix don't fit, so the whole text is cut
+		want       []string // exact lines, when set
+	}{
+		{name: "short entry stays one line", prefix: "07:15  Kaj – ", body: "Tandläkare", wantLines: 1, wantSuffix: "Tandläkare"},
+		{name: "long entry wraps at a space", prefix: "07:15  Kaj – ", body: "Fotbollsträning på Åvallen med laget", wantLines: 2, wantSuffix: "laget"},
+		{
+			name: "heldag suffix ends last line whole", prefix: "Tors  Kaj – ", body: "Simning på Hässelbybadet med skolan", suffix: ", heldag", wantLines: 2, wantSuffix: ", heldag",
+			want: []string{"Tors  Kaj – Simning på", indent12 + "Hässelbybade…, heldag"},
+		},
+		{
+			name: "time suffix ends last line whole", prefix: "Tors  Kaj – ", body: "Simning på Hässelbybadet med skolan", suffix: ", 10:00", wantLines: 2, wantSuffix: ", 10:00",
+			want: []string{"Tors  Kaj – Simning på", indent12 + "Hässelbybadet…, 10:00"},
+		},
+		{
+			name: "body fits line 1, suffix carries last word to line 2", prefix: "Tors  Kaj – ", body: "Simning i Hässelby", suffix: ", heldag", wantLines: 2, wantSuffix: ", heldag",
+			want: []string{"Tors  Kaj – Simning i", indent12 + "Hässelby, heldag"},
+		},
+		{
+			name: "single word cut on line 2", prefix: "Tors  Kaj – ", body: "Simning " + strings.Repeat("å", 30), suffix: ", 10:00", wantLines: 2, wantSuffix: "…, 10:00",
+			want: []string{"Tors  Kaj – Simning", indent12 + strings.Repeat("å", 13) + "…, 10:00"},
+		},
+		{
+			name: "word filling a full line stays whole", prefix: "07:15  Kaj – ", body: word20 + " Åvallen", wantLines: 2, wantSuffix: "Åvallen",
+			want: []string{"07:15  Kaj – " + word20, "             Åvallen"},
+		},
+		{
+			name: "word one rune wider than a full line cut", prefix: "07:15  Kaj – ", body: word20 + "å Åvallen", wantLines: 2, wantSuffix: "Åvallen",
+			want: []string{"07:15  Kaj – " + strings.Repeat("å", 19) + "…", "             Åvallen"},
+		},
+		{name: "prov suffix ends last line", prefix: "L  ", body: "Läxa engelska kapitel tre och fyra, glosor", suffix: " (Prov) – idag", wantLines: 2, wantSuffix: " (Prov) – idag"},
+		{name: "too long for two lines", prefix: "Tors  Kaj – ", body: long, suffix: ", 10:00", wantLines: 2, wantSuffix: "…, 10:00"},
+		{name: "single over-wide word cut", prefix: "L  ", body: strings.Repeat("å", 100), wantLines: 1, wantSuffix: "…"},
+		{name: "over-wide word on its own line", prefix: "L  ", body: strings.Repeat("å", 100) + " glosor", suffix: " – idag", wantLines: 2, wantSuffix: "glosor – idag"},
+		{name: "prefix and suffix too wide", prefix: strings.Repeat("Kaj ", 20), body: "Simning", suffix: ", 10:00", wantLines: 1, wantSuffix: "…", cutWhole: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			lines := wrapEntry(bodyFace, tt.prefix, tt.body, tt.suffix, maxWidth)
+			if len(lines) != tt.wantLines {
+				t.Fatalf("wrapEntry = %q, want %d lines", lines, tt.wantLines)
+			}
+			if tt.want != nil && strings.Join(lines, "|") != strings.Join(tt.want, "|") {
+				t.Errorf("wrapEntry = %q, want %q", lines, tt.want)
+			}
+			if !strings.HasPrefix(lines[0], tt.prefix) && !tt.cutWhole {
+				t.Errorf("line 1 %q does not start with prefix %q", lines[0], tt.prefix)
+			}
+			if last := lines[len(lines)-1]; !strings.HasSuffix(last, tt.wantSuffix) {
+				t.Errorf("last line %q does not end in %q", last, tt.wantSuffix)
+			}
+			for _, line := range lines {
+				if w := measure(bodyFace, line); w > maxWidth {
+					t.Errorf("line %q is %dpx wide, want ≤ %d", line, w, maxWidth)
+				}
+			}
+			if len(lines) < 2 {
+				return
+			}
+			second := []rune(lines[1])
+			n := len([]rune(tt.prefix))
+			indent := string(second[:n])
+			if strings.TrimLeft(indent, " ") != "" {
+				t.Errorf("line 2 %q does not start with %d spaces", lines[1], n)
+			}
+			if got, want := measure(bodyFace, indent), measure(bodyFace, tt.prefix); got != want {
+				t.Errorf("line 2 indent is %dpx wide, want prefix width %d", got, want)
+			}
+			if second[n] == ' ' {
+				t.Errorf("line 2 %q has a space after the indent", lines[1])
 			}
 		})
 	}
@@ -284,14 +416,16 @@ func TestClockRect(t *testing.T) {
 		name string
 		ok   bool
 	}{
-		{name: "X edges are multiples of 8", ok: r.Min.X%8 == 0 && r.Max.X%8 == 0},
+		{name: "Min.Y is a multiple of 8", ok: r.Min.Y%8 == 0},
+		{name: "Max.Y is a multiple of 8", ok: r.Max.Y%8 == 0},
 		{name: "inside the screen", ok: r.In(screenRect)},
 		{name: "inside the border", ok: r.In(inner)},
-		{name: "inside the left column", ok: r.In(leftColumnRect)},
+		{name: "inside contentRect", ok: r.In(contentRect)},
+		{name: "left of weatherRuleX", ok: r.Max.X <= weatherRuleX},
+		{name: "does not overlap weatherRect", ok: !r.Overlaps(weatherRect)},
 		{name: "wide enough for 88:88", ok: font.MeasureString(clockFace, "88:88").Ceil() <= r.Dx()},
 		{name: "wide enough for 00:00", ok: font.MeasureString(clockFace, "00:00").Ceil() <= r.Dx()},
 		{name: "tall enough for ascent plus descent", ok: m.Ascent.Ceil()+m.Descent.Ceil() <= r.Dy()},
-		{name: "above the temperature", ok: r.Max.Y <= temperatureBaselineY-temperatureFace.Metrics().Ascent.Ceil()},
 	}
 
 	for _, tt := range tests {
@@ -324,20 +458,80 @@ func TestRender_ClockDrawnInsideClockRect(t *testing.T) {
 	}
 }
 
-func TestLayout_SectionsFitAboveBottomMargin(t *testing.T) {
-	descent := bodyFace.Metrics().Descent.Ceil()
+func TestRender_WeatherOutsideClockRect(t *testing.T) {
+	v := stressView()
+	v.Clock = ""
+	if n := countBlack(Render(v), ClockRect()); n != 0 {
+		t.Errorf("%d black pixels inside ClockRect %v with no clock, want none", n, ClockRect())
+	}
+}
+
+func TestLayout_SectionOrder(t *testing.T) {
 	tests := []struct {
 		name         string
-		lastBaseline int
+		above, below int
 	}{
-		{name: "lunch", lastBaseline: firstRowBaselineY(lunchTop) + (maxLunchRows-1)*rowHeight},
-		{name: "upcoming", lastBaseline: firstRowBaselineY(upcomingTop) + (maxUpcomingRows-1)*rowHeight},
+		{name: "band above lunch", above: bandBottom, below: lunchTop},
+		{name: "lunch above today", above: lunchTop, below: todayTop},
+		{name: "today above homework", above: todayTop, below: homeworkTop},
+		{name: "homework above upcoming", above: homeworkTop, below: upcomingTop},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if bottom := tt.lastBaseline + descent; bottom > contentBottom {
-				t.Errorf("last row reaches y=%d, want ≤ %d", bottom, contentBottom)
+			if tt.above >= tt.below {
+				t.Errorf("y=%d is not above y=%d", tt.above, tt.below)
+			}
+		})
+	}
+}
+
+func TestLayout_WeatherFitsBand(t *testing.T) {
+	m := temperatureFace.Metrics()
+	tests := []struct {
+		name string
+		ok   bool
+	}{
+		{name: "temperature below band top", ok: temperatureBaselineY-m.Ascent.Ceil() >= weatherRect.Min.Y},
+		{name: "first line below temperature", ok: weatherLinesBaselineY-bodyFace.Metrics().Ascent.Ceil() >= temperatureBaselineY+m.Descent.Ceil()},
+		{name: "last line inside band", ok: weatherBottom <= bandBottom},
+		{name: "weather right of the rule", ok: weatherRect.Min.X > weatherRuleX+weatherRuleThickness},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if !tt.ok {
+				t.Errorf("weatherRect %v: %s does not hold", weatherRect, tt.name)
+			}
+		})
+	}
+}
+
+func TestLayout_BodyDescent(t *testing.T) {
+	if got := bodyFace.Metrics().Descent.Ceil(); got > bodyDescent {
+		t.Errorf("body face descent = %d, want ≤ bodyDescent (%d)", got, bodyDescent)
+	}
+}
+
+func TestLayout_SectionsFitAboveBottomMargin(t *testing.T) {
+	descent := bodyFace.Metrics().Descent.Ceil()
+	// Each section's last budgeted line stays above the next section's
+	// rule, and the last section above the bottom margin.
+	tests := []struct {
+		name         string
+		lastBaseline int
+		limit        int
+	}{
+		{name: "lunch", lastBaseline: firstRowBaselineY(lunchTop) + (lunchLineBudget-1)*rowHeight, limit: todayTop},
+		{name: "today", lastBaseline: firstRowBaselineY(todayTop) + (todayLineBudget-1)*rowHeight, limit: homeworkTop},
+		{name: "homework", lastBaseline: firstRowBaselineY(homeworkTop) + (homeworkLineBudget-1)*rowHeight, limit: upcomingTop},
+		{name: "upcoming", lastBaseline: firstRowBaselineY(upcomingTop) + (upcomingLineBudget-1)*rowHeight, limit: contentBottom},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if bottom := tt.lastBaseline + descent; bottom > tt.limit {
+				t.Errorf("last line reaches y=%d, want ≤ %d", bottom, tt.limit)
 			}
 		})
 	}

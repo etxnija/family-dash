@@ -1,5 +1,8 @@
 // Package eink is the e-paper display adapter: it shapes dashboard data
-// into a display-ready view for the 1-bit e-paper panel.
+// into a display-ready view and renders it as a portrait 480x800 frame for
+// the 1-bit e-paper panel. The renderer never rotates; turning the frame
+// to the panel's native landscape orientation is the panel adapter's job
+// (ADR-0004).
 package eink
 
 import (

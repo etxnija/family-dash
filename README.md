@@ -35,7 +35,7 @@ webcal/
 
 eink/
   view.go                      adapter: e-paper view-model (Swedish, Stockholm time)
-  layout.go                    every layout constant of the 800x480 frame
+  layout.go                    every layout constant of the portrait 480x800 frame
   render.go                    1-bit renderer: View → *image.Gray (Go Mono fonts)
   view_test.go, render_test.go adapter tests
 

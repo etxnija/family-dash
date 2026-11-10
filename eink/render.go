@@ -54,8 +54,8 @@ func mustNewFace(name string, f *opentype.Font, size float64) font.Face {
 	return face
 }
 
-// Render draws v onto a black/white 800x480 frame. Every pixel of the
-// result is either 0 (black) or 255 (white).
+// Render draws v onto a black/white portrait 480x800 frame. Every pixel
+// of the result is either 0 (black) or 255 (white).
 func Render(v View) *image.Gray {
 	renderMu.Lock()
 	defer renderMu.Unlock()
@@ -66,22 +66,22 @@ func Render(v View) *image.Gray {
 	drawFrame(img)
 	drawHeader(subImage(img, headerRect), v)
 
-	left := subImage(img, leftColumnRect)
 	drawClock(subImage(img, ClockRect()), v.Clock)
-	drawWeather(left, v.Weather)
-	drawSection(left, lunchTop, headingLunch, lunchRows(v.Lunch, left.Bounds().Dx()), emptyLunch)
+	drawWeather(subImage(img, weatherRect), v.Weather)
 
-	right := subImage(img, rightColumnRect)
-	width := right.Bounds().Dx()
-	drawSection(right, todayTop, headingToday, eventRows(v.Events, width), emptyToday)
-	drawSection(right, homeworkTop, headingHomework, homeworkRows(v.Homework, width), emptyHomework)
-	drawSection(right, upcomingTop, headingUpcoming, upcomingRows(v.Upcoming, width), emptyUpcoming)
+	content := subImage(img, contentRect)
+	width := content.Bounds().Dx()
+	drawSection(content, lunchTop, headingLunch, lunchRows(v.Lunch, width), emptyLunch)
+	drawSection(content, todayTop, headingToday, eventRows(v.Events, width), emptyToday)
+	drawSection(content, homeworkTop, headingHomework, homeworkRows(v.Homework, width), emptyHomework)
+	drawSection(content, upcomingTop, headingUpcoming, upcomingRows(v.Upcoming, width), emptyUpcoming)
 
 	threshold(img)
 	return img
 }
 
-// drawFrame draws the border along the screen edges and the header rule.
+// drawFrame draws the border along the screen edges, the header rule and
+// the vertical rule between the clock and the weather.
 func drawFrame(img *image.Gray) {
 	b := img.Bounds()
 	fillRect(img, image.Rect(b.Min.X, b.Min.Y, b.Max.X, b.Min.Y+borderThickness))
@@ -90,10 +90,11 @@ func drawFrame(img *image.Gray) {
 	fillRect(img, image.Rect(b.Max.X-borderThickness, b.Min.Y, b.Max.X, b.Max.Y))
 
 	fillRect(img, image.Rect(headerRect.Min.X, headerRuleY, headerRect.Max.X, headerRuleY+headerRuleThickness))
+	fillRect(img, image.Rect(weatherRuleX, clockY0, weatherRuleX+weatherRuleThickness, lunchTop))
 }
 
-// drawHeader draws the date and week label on the left and the owners
-// right-aligned, all on dst (the header area).
+// drawHeader draws the date and week label on the first line and the
+// owners left-aligned on the second, all on dst (the header area).
 func drawHeader(dst *image.Gray, v View) {
 	b := dst.Bounds()
 	date := fitText(dateFace, v.DateLabel, b.Dx())
@@ -101,14 +102,10 @@ func drawHeader(dst *image.Gray, v View) {
 
 	if v.WeekLabel != "" {
 		x += weekLabelGap
-		x += drawText(dst, bodyFace, x, dateBaselineY, fitText(bodyFace, v.WeekLabel, b.Max.X-x))
+		drawText(dst, bodyFace, x, dateBaselineY, fitText(bodyFace, v.WeekLabel, b.Max.X-x))
 	}
 
-	if v.Owners != "" {
-		owners := fitText(bodyFace, v.Owners, b.Max.X-x-weekLabelGap)
-		w := font.MeasureString(bodyFace, owners).Ceil()
-		drawText(dst, bodyFace, b.Max.X-w, ownersBaselineY, owners)
-	}
+	drawText(dst, bodyFace, b.Min.X, ownersBaselineY, fitText(bodyFace, v.Owners, b.Dx()))
 }
 
 // drawClock draws clock centered in dst (the clock rectangle).
@@ -123,7 +120,8 @@ func drawClock(dst *image.Gray, clock string) {
 	drawText(dst, clockFace, b.Min.X+(b.Dx()-w)/2, baseline, clock)
 }
 
-// drawWeather draws the large temperature and the lines beneath it.
+// drawWeather draws the large temperature and the lines beneath it, from
+// the left edge of dst (the weather block).
 func drawWeather(dst *image.Gray, w WeatherView) {
 	b := dst.Bounds()
 	drawText(dst, temperatureFace, b.Min.X, temperatureBaselineY, fitText(temperatureFace, w.Temperature, b.Dx()))
@@ -154,51 +152,52 @@ func drawSection(dst *image.Gray, top int, heading string, rows []string, empty 
 	}
 }
 
-// lunchRows returns the visible lunch rows, each fitted to maxWidth.
+// lunchRows returns the visible lunch lines, each dish wrapped to
+// maxWidth.
 func lunchRows(lunch []string, maxWidth int) []string {
-	rows := make([]string, 0, len(lunch))
+	entries := make([][]string, 0, len(lunch))
 	for _, dish := range lunch {
-		rows = append(rows, fitText(bodyFace, dish, maxWidth))
+		entries = append(entries, wrapEntry(bodyFace, "", dish, "", maxWidth))
 	}
-	return limitRows(rows, maxLunchRows)
+	return budgetLines(entries, lunchLineBudget)
 }
 
 // eventRows returns the visible "<time>  <Owner> – <Summary>[, <Location>]"
-// rows, each fitted to maxWidth.
+// lines, each event wrapped to maxWidth.
 func eventRows(events []EventRow, maxWidth int) []string {
-	rows := make([]string, 0, len(events))
+	entries := make([][]string, 0, len(events))
 	for _, e := range events {
-		rows = append(rows, fitParts(bodyFace, e.Time+"  "+ownerPrefix(e.Owner), withLocation(e.Summary, e.Location), "", maxWidth))
+		entries = append(entries, wrapEntry(bodyFace, e.Time+"  "+ownerPrefix(e.Owner), withLocation(e.Summary, e.Location), "", maxWidth))
 	}
-	return limitRows(rows, maxEventRows)
+	return budgetLines(entries, todayLineBudget)
 }
 
 // homeworkRows returns the visible "<Initial>  <Summary>[ (Prov)] –
-// <daylabel>" rows across all groups, each fitted to maxWidth so the day
-// label is never cut.
+// <daylabel>" lines across all groups, each item wrapped to maxWidth so
+// the day label is never cut.
 func homeworkRows(groups []HomeworkGroup, maxWidth int) []string {
-	var rows []string
+	var entries [][]string
 	for _, g := range groups {
 		for _, item := range g.Items {
 			suffix := " – " + item.DayLabel
 			if item.IsProv {
 				suffix = " (Prov)" + suffix
 			}
-			rows = append(rows, fitParts(bodyFace, g.Initial+"  ", item.Summary, suffix, maxWidth))
+			entries = append(entries, wrapEntry(bodyFace, g.Initial+"  ", item.Summary, suffix, maxWidth))
 		}
 	}
-	return limitRows(rows, maxHomeworkRows)
+	return budgetLines(entries, homeworkLineBudget)
 }
 
 // upcomingRows returns the visible "<Abbrev>  <Owner> – <Summary>[,
-// <Location>], <time|heldag>" rows, each fitted to maxWidth so the time is
-// never cut.
+// <Location>], <time|heldag>" lines, each entry wrapped to maxWidth so the
+// time is never cut.
 func upcomingRows(upcoming []UpcomingRow, maxWidth int) []string {
-	rows := make([]string, 0, len(upcoming))
+	entries := make([][]string, 0, len(upcoming))
 	for _, u := range upcoming {
-		rows = append(rows, fitParts(bodyFace, u.Weekday+"  "+ownerPrefix(u.Owner), withLocation(u.Summary, u.Location), ", "+u.Time, maxWidth))
+		entries = append(entries, wrapEntry(bodyFace, u.Weekday+"  "+ownerPrefix(u.Owner), withLocation(u.Summary, u.Location), ", "+u.Time, maxWidth))
 	}
-	return limitRows(rows, maxUpcomingRows)
+	return budgetLines(entries, upcomingLineBudget)
 }
 
 // ownerPrefix returns "<owner> – ", or "" when owner is empty.
@@ -218,15 +217,81 @@ func withLocation(summary, location string) string {
 	return summary + ", " + location
 }
 
-// limitRows returns rows unchanged when there are at most limit of them.
-// Otherwise it keeps the first limit-1 rows and adds "+N till", where N is
-// the number of hidden rows.
-func limitRows(rows []string, limit int) []string {
-	if len(rows) <= limit {
-		return rows
+// budgetLines flattens entries into lines when they fit in budget lines.
+// Otherwise it keeps whole entries, in order, while they fit in budget-1
+// lines, stops at the first one that doesn't, and adds "+N till", where N
+// is the number of hidden entries. An entry is never cut.
+func budgetLines(entries [][]string, budget int) []string {
+	var lines []string
+	for _, e := range entries {
+		lines = append(lines, e...)
 	}
-	visible := append([]string(nil), rows[:limit-1]...)
-	return append(visible, fmt.Sprintf("+%d till", len(rows)-(limit-1)))
+	if len(lines) <= budget {
+		return lines
+	}
+
+	lines = lines[:0]
+	shown := 0
+	for _, e := range entries {
+		if len(lines)+len(e) > budget-1 {
+			break
+		}
+		lines = append(lines, e...)
+		shown++
+	}
+	return append(lines, fmt.Sprintf("+%d till", len(entries)-shown))
+}
+
+// wrapEntry lays out prefix, body and suffix on at most maxEntryLines
+// lines of maxWidth pixels. Line 1 starts with prefix, later lines with an
+// indent as wide as prefix (Go Mono is monospace, so one space per rune).
+// body is broken greedily at spaces; suffix is never broken and ends the
+// last line. A word wider than a whole line goes on its own line, cut with
+// "…", and so does the end of a body too long for the last line. If prefix
+// and suffix alone don't fit, the joined text is cut onto one line.
+func wrapEntry(face font.Face, prefix, body, suffix string, maxWidth int) []string {
+	if measure(face, prefix+body+suffix) <= maxWidth {
+		return []string{prefix + body + suffix}
+	}
+	suffixWidth := measure(face, suffix)
+	if measure(face, prefix)+suffixWidth+measure(face, ellipsis) > maxWidth {
+		return []string{fitText(face, prefix+body+suffix, maxWidth)}
+	}
+
+	indent := strings.Repeat(" ", len([]rune(prefix)))
+	words := strings.Fields(body)
+	var lines []string
+	lead := prefix
+	// Fill every line but the last, always leaving a word for the last.
+	for len(lines) < maxEntryLines-1 && len(words) > 1 {
+		n := wordsFitting(face, lead, words[:len(words)-1], maxWidth)
+		if n == 0 {
+			// words[0] is wider than a whole line on its own.
+			lines = append(lines, lead+fitText(face, words[0], maxWidth-measure(face, lead)))
+			n = 1
+		} else {
+			lines = append(lines, lead+strings.Join(words[:n], " "))
+		}
+		words = words[n:]
+		lead = indent
+	}
+	rest := fitText(face, strings.Join(words, " "), maxWidth-measure(face, lead)-suffixWidth)
+	return append(lines, lead+rest+suffix)
+}
+
+// wordsFitting returns how many of words, joined by spaces after lead,
+// fit in maxWidth pixels.
+func wordsFitting(face font.Face, lead string, words []string, maxWidth int) int {
+	n := 0
+	for n < len(words) && measure(face, lead+strings.Join(words[:n+1], " ")) <= maxWidth {
+		n++
+	}
+	return n
+}
+
+// measure returns the width of s in whole pixels, rounded up.
+func measure(face font.Face, s string) int {
+	return font.MeasureString(face, s).Ceil()
 }
 
 // fitText returns s unchanged when it fits in maxWidth pixels, otherwise
@@ -255,17 +320,6 @@ func fitText(face font.Face, s string, maxWidth int) string {
 		}
 	}
 	return strings.TrimRight(string(runes[:lo]), " ") + ellipsis
-}
-
-// fitParts joins prefix, middle and suffix, cutting only middle so the
-// result fits in maxWidth pixels. If prefix and suffix alone don't fit,
-// the whole joined text is cut instead.
-func fitParts(face font.Face, prefix, middle, suffix string, maxWidth int) string {
-	fixedWidth := font.MeasureString(face, prefix+suffix).Ceil()
-	if fixedWidth+font.MeasureString(face, ellipsis).Ceil() > maxWidth {
-		return fitText(face, prefix+middle+suffix, maxWidth)
-	}
-	return prefix + fitText(face, middle, maxWidth-fixedWidth) + suffix
 }
 
 // wrapAt returns lines with every line wider than maxWidth split at sep

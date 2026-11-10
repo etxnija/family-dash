@@ -1,8 +1,8 @@
 ---
 type: component
 tags: [eink, epaper, render, adapter, hexagonal, font]
-summary: eink/ e-paper adapter — Stockholm view-model, 1-bit 800x480 renderer (Go Mono, two columns, row limits, "…" cutting, byte-aligned ClockRect), plus verified Waveshare 7.5" V2 driver facts for the panel adapter.
-links: [docs/arch/adr/0002-dual-display-adapters-over-shared-interface.md, docs/arch/adr/0003-eink-panel-port-and-refresh-policy.md, docs/raspberry-pi-setup.md, dashboard-page.md, composition-root.md, eink-view.md]
+summary: eink/ e-paper adapter — Stockholm view-model, 1-bit portrait 480x800 renderer (Go Mono, single column, clock/weather band, two-line wrapped entries with line budgets, ClockRect top/bottom on multiples of 8), plus verified Waveshare 7.5" V2 driver facts for the panel adapter.
+links: [docs/arch/adr/0002-dual-display-adapters-over-shared-interface.md, docs/arch/adr/0003-eink-panel-port-and-refresh-policy.md, docs/arch/adr/0004-portrait-frame-rotated-by-panel-adapter.md, docs/raspberry-pi-setup.md, dashboard-page.md, composition-root.md, eink-view.md]
 updated: 2026-11-10
 generated: { by: worker, at: 2026-11-10T00:00:00Z }
 verified: [{ by: "human", at: 2026-11-10 }]
@@ -11,8 +11,11 @@ verified: [{ by: "human", at: 2026-11-10 }]
 # E-paper Adapter (`eink/`)
 
 ## Context & Rationale
-`eink/` turns the same domain data as `web/` into a black/white 800x480
-frame (`*image.Gray`) for the Waveshare 7.5" panel. Per
+`eink/` turns the same domain data as `web/` into a black/white
+frame (`*image.Gray`) for the Waveshare 7.5" panel, drawn in portrait
+480x800. The renderer never rotates; the panel adapter turns the frame to
+the panel's native landscape orientation
+([ADR-0004](../../docs/arch/adr/0004-portrait-frame-rotated-by-panel-adapter.md)). Per
 [ADR-0002](../../docs/arch/adr/0002-dual-display-adapters-over-shared-interface.md)
 it is deliberately independent of `web/`: it has its own view-model and
 renderer and imports nothing from `web`. Today the frame is only written to
@@ -26,19 +29,37 @@ panel driver comes later, behind the port in
   Swedish strings; `Render(View)` only lays them out.
 - `Render` draws anti-aliased text and rules on white, then `threshold`s
   every pixel at 128 (<128 → 0, else 255), so the output is strictly 1-bit.
-- Two columns: left (X 16–288: clock, weather, SKOLLUNCH) and right
-  (X 312–784: today, homework, upcoming), with a white 24 px gutter and no
-  rule between them.
-- Row limits are named constants (`maxEventRows`, `maxHomeworkRows`,
-  `maxUpcomingRows`, `maxLunchRows`); `limitRows` keeps `limit-1` rows and
-  adds `"+N till"` when a section overflows. Each section has fixed room
-  for its maximum, so positions don't move with content.
-- Over-wide text is cut with `"…"` (`fitText`; `fitParts` keeps homework
-  day labels and upcoming times intact). Every region is drawn onto a
-  clipped `SubImage` (header, columns, clock), so nothing spills outside it.
-- `ClockRect()` (X 16–272, Y 64–152) is the only place the clock is drawn.
-  Its X edges are multiples of 8 because one byte holds 8 horizontal
-  pixels and `DisplayPart` requires byte-aligned X edges.
+- One content column (X 16–464, `contentRect`). Header: date + week
+  label on line 1, owners left-aligned on line 2. Below it a clock/weather
+  band: `ClockRect()` on the left, a 1 px vertical rule at `weatherRuleX`,
+  then the temperature and up to 5 weather lines on the `weatherRect`
+  sub-image. The SKOLLUNCH rule (`lunchTop`, `sectionGap` below
+  `bandBottom`) closes the band, and the vertical rule runs down to meet
+  it; then
+  SKOLLUNCH, IDAG, LÄXOR OCH PROV and KOMMANDE DAGAR stack in that order.
+- Entries wrap to at most `maxEntryLines` (2) lines via `wrapEntry`:
+  line 1 starts with the prefix (time/weekday/initial + owner), line 2
+  with a hanging indent of one space per prefix rune (Go Mono is
+  monospace). The body breaks greedily at spaces; the suffix (homework
+  `" (Prov)"`/day label, upcoming `", "+time`) is unbreakable and always
+  ends the last line. Body text past two lines, and a single word wider
+  than a whole line, are cut with `"…"` (`fitText`).
+- Section limits are line budgets (`lunchLineBudget` 4,
+  `todayLineBudget` 6, `homeworkLineBudget` 5, `upcomingLineBudget` 5)
+  that count body lines, not entries, including the `"+N till"` line.
+  `budgetLines` shows whole entries while they fit in `budget-1` lines and
+  stops at the first that doesn't. An entry that doesn't fit whole is
+  hidden entirely, never shown in part, and N counts hidden entries. Each
+  section has fixed room for its budget, so positions don't move with
+  content.
+- Other over-wide text (header, weather) is cut with `"…"` (`fitText`).
+  Every region is drawn onto a clipped `SubImage` (header, content
+  column, clock, weather), so nothing spills outside it; the weather can
+  never reach the clock rect.
+- `ClockRect()` (X 16–248, Y 88–176) is the only place the clock is drawn.
+  Its Y edges are multiples of 8: in portrait the panel's native X axis
+  is the portrait Y axis, one byte holds 8 native pixels and `DisplayPart`
+  requires byte-aligned native X edges. Its portrait X edges are free.
 - Fonts are Go Mono and Go Mono Bold from `golang.org/x/image/font/gofont`
   (embedded, parsed once at init; `renderMu` serializes `Render` since
   faces aren't concurrency-safe). x/image is pinned at v0.36.0 (see the
@@ -47,6 +68,13 @@ panel driver comes later, behind the port in
   live in `eink/layout.go`; tweak the layout there, not in `render.go`.
 
 ## Gotchas & Failure Modes
+- The panel is landscape-native (800x480). The driver adapter alone
+  rotates the portrait frame by 90 degrees and maps partial-refresh rects
+  (e.g. `ClockRect()`) to native coordinates (ADR-0004); the portrait
+  renderer never rotates, so the PNG is the true mounted view.
+- When a section overflows with two-line entries, an even budget leaves
+  one line empty (lunch 4 → one entry + "+N till" = 3 lines), because an
+  entry is never cut to fill the gap.
 - x/image has two version thresholds, both read from the module cache:
   - v0.37.0–v0.45.0 declare `go 1.25.0`. Any of them makes `go mod tidy`
     rewrite our `go 1.25` directive, which is why we pin v0.36.0.
@@ -55,8 +83,8 @@ panel driver comes later, behind the port in
   (`TestFaces_HaveGlyphs`); any new symbol must be added to that test, or it
   renders as a missing-glyph box.
 - Mono fonts are wide: at 72 px "HH:MM" is about 216 px of the
-  256 px clock rect. Changing the clock font or size means resizing `ClockRect` (keeping
-  X edges on multiples of 8) and rechecking the left column.
+  232 px clock rect. Changing the clock font or size means resizing `ClockRect` (keeping
+  Y edges on multiples of 8) and rechecking the weather width beside it.
 
 ## Hardware and driver facts for the later panel adapter
 Verified on a Pi Zero W with the Waveshare 7.5" V2 and
@@ -70,7 +98,9 @@ Verified on a Pi Zero W with the Waveshare 7.5" V2 and
 - `DisplayPart` takes an image the size of `rect` with its origin at (0,0),
   not the full frame. Passing the full frame shows the frame's top-left
   corner inside `rect`.
-- `rect` X edges must be multiples of 8.
+- `rect` X edges (native) must be multiples of 8. In portrait this
+  applies to the clock rectangle's portrait Y edges (top/bottom), which
+  become the native X edges after rotation.
 - Anything wider than `rect` is clipped.
 - Partial refresh ghosts, so a periodic full refresh is required.
 - Call `Sleep()` after use.

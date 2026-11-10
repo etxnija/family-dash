@@ -188,7 +188,7 @@ func TestWritePNG(t *testing.T) {
 		wantErr bool
 	}{
 		{
-			name: "writes decodable 800x480 frame",
+			name: "writes decodable 480x800 frame",
 			path: filepath.Join(dir, "frame.png"),
 		},
 		{
@@ -237,8 +237,8 @@ func TestWritePNG(t *testing.T) {
 			if err != nil {
 				t.Fatalf("png.Decode() unexpected error: %v", err)
 			}
-			if b := decoded.Bounds(); b.Dx() != 800 || b.Dy() != 480 {
-				t.Errorf("decoded bounds = %v, want 800x480", b)
+			if b := decoded.Bounds(); b.Dx() != 480 || b.Dy() != 800 {
+				t.Errorf("decoded bounds = %v, want 480x800", b)
 			}
 		})
 	}

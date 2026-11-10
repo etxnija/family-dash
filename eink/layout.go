@@ -2,14 +2,16 @@ package eink
 
 import "image"
 
-// Layout of the 800x480 frame, in pixels. Every number the renderer uses
-// to place things lives here so the layout can be tweaked in one spot.
+// Layout of the portrait 480x800 frame, in pixels. Every number the
+// renderer uses to place things lives here so the layout can be tweaked in
+// one spot. The renderer never rotates: the panel adapter turns the frame
+// to the panel's native landscape orientation (ADR-0004).
 // Y values ending in "BaselineY" are text baselines; the rest are edges.
 const (
-	// ScreenWidth is the panel width.
-	ScreenWidth = 800
-	// ScreenHeight is the panel height.
-	ScreenHeight = 480
+	// ScreenWidth is the frame width.
+	ScreenWidth = 480
+	// ScreenHeight is the frame height.
+	ScreenHeight = 800
 
 	// borderThickness is the black frame drawn along the screen edges.
 	borderThickness = 4
@@ -21,27 +23,23 @@ const (
 	contentTop = outerMargin
 	// contentBottom is the lowest Y any content may reach.
 	contentBottom = ScreenHeight - outerMargin
+	// contentX0 and contentX1 bound the single content column.
+	contentX0 = outerMargin
+	contentX1 = ScreenWidth - outerMargin
 
 	// dateBaselineY is the baseline of the date and the week label.
 	dateBaselineY = 44
 	// weekLabelGap is the space between the date and the week label.
 	weekLabelGap = 12
-	// ownersBaselineY is the baseline of the owners, right-aligned.
-	ownersBaselineY = 44
+	// ownersBaselineY is the baseline of the owners, on a second header
+	// line below the date.
+	ownersBaselineY = 68
 	// headerRuleY is the top of the rule under the header.
-	headerRuleY = 56
+	headerRuleY = 78
 	// headerRuleThickness is the height of the rule under the header.
 	headerRuleThickness = 2
 	// bodyTop is the first Y below the header rule.
 	bodyTop = headerRuleY + headerRuleThickness
-
-	// leftColumnX0 and leftColumnX1 bound the left column (width 272).
-	leftColumnX0 = outerMargin
-	leftColumnX1 = 288
-	// rightColumnX0 and rightColumnX1 bound the right column. The gutter
-	// between the columns (288 to 312) is kept white, with no rule.
-	rightColumnX0 = 312
-	rightColumnX1 = ScreenWidth - outerMargin
 
 	// clockFontSize is the bold clock face size.
 	clockFontSize = 72
@@ -49,8 +47,11 @@ const (
 	dateFontSize = 28
 	// headingFontSize is the bold section heading face size.
 	headingFontSize = 16
-	// bodyFontSize is the regular body text face size (minimum 14).
+	// bodyFontSize is the regular body text face size (minimum 15).
 	bodyFontSize = 15
+	// bodyDescent is the body face's descent at bodyFontSize, rounded up
+	// (checked by TestLayout_BodyDescent).
+	bodyDescent = 4
 	// temperatureFontSize is the bold temperature face size.
 	temperatureFontSize = 32
 
@@ -63,50 +64,77 @@ const (
 	headingOffset = 20
 	// sectionGap is the space after a section's last row slot, before the
 	// next section's rule.
-	sectionGap = 12
+	sectionGap = 16
 
-	// maxEventRows, maxHomeworkRows, maxUpcomingRows and maxLunchRows
-	// limit each section; extra rows collapse into a "+N till" row.
-	maxEventRows    = 5
-	maxHomeworkRows = 4
-	maxUpcomingRows = 5
-	maxLunchRows    = 4
+	// lunchLineBudget, todayLineBudget, homeworkLineBudget and
+	// upcomingLineBudget limit each section. A budget counts body lines,
+	// not entries, and includes the "+N till" line that replaces the
+	// entries that don't fit.
+	lunchLineBudget    = 4
+	todayLineBudget    = 6
+	homeworkLineBudget = 5
+	upcomingLineBudget = 5
+	// maxEntryLines is the most lines one entry wraps to.
+	maxEntryLines = 2
 
-	// clockX0, clockX1, clockY0 and clockY1 bound the clock rectangle.
-	// The X edges are multiples of 8 so the panel can partially refresh it.
-	clockX0 = 16
-	clockX1 = 272
-	clockY0 = bodyTop + 6
+	// clockX0, clockX1, clockY0 and clockY1 bound the clock rectangle at
+	// the left of the clock/weather band. The Y edges are multiples of 8
+	// so the panel can partially refresh it (see ClockRect).
+	clockX0 = contentX0
+	clockX1 = clockX0 + 232
+	clockY0 = 88
 	clockY1 = clockY0 + 88
 
-	// temperatureBaselineY is the baseline of the large temperature.
-	temperatureBaselineY = clockY1 + 34
+	// weatherRuleX is the left edge of the thin vertical rule between the
+	// clock and the weather; it spans the band's Y range.
+	weatherRuleX = clockX1 + 8
+	// weatherRuleThickness is the width of that vertical rule.
+	weatherRuleThickness = 1
+	// weatherX0 is the left edge of the weather block, which runs to
+	// contentX1.
+	weatherX0 = weatherRuleX + weatherRuleThickness + 15
+
+	// temperatureBaselineY is the baseline of the large temperature at the
+	// top of the band.
+	temperatureBaselineY = clockY0 + 31
 	// weatherLinesBaselineY is the baseline of the first weather line.
 	weatherLinesBaselineY = temperatureBaselineY + 24
 	// maxWeatherLines is the number of weather line slots: the view's four
 	// lines plus one for the low/high line, which wraps at " · ".
 	maxWeatherLines = 5
+	// weatherBottom is the lowest Y of the last weather line slot,
+	// including the body face's descent.
+	weatherBottom = weatherLinesBaselineY + (maxWeatherLines-1)*rowHeight + bodyDescent
 
-	// lunchTop is the Y of the rule above SKOLLUNCH.
-	lunchTop = weatherLinesBaselineY + (maxWeatherLines-1)*rowHeight + sectionGap
+	// bandBottom is the bottom of the clock/weather content: whichever of
+	// the clock rect and the last weather slot is lower. The rule above
+	// SKOLLUNCH, sectionGap below it, closes the band; the vertical weather
+	// rule runs down to meet it at lunchTop.
+	bandBottom = max(clockY1, weatherBottom)
 
-	// todayTop, homeworkTop and upcomingTop are the Y of the rule above
-	// each right-column section. Each section has fixed room for its
-	// maximum row count, so positions don't move with the content.
-	todayTop    = bodyTop + 6
-	homeworkTop = todayTop + headingOffset + maxEventRows*rowHeight + sectionGap
-	upcomingTop = homeworkTop + headingOffset + maxHomeworkRows*rowHeight + sectionGap
+	// lunchTop, todayTop, homeworkTop and upcomingTop are the Y of the rule
+	// above each section, stacked in that order. Each section has fixed
+	// room for its line budget, so positions don't move with the content.
+	lunchTop    = bandBottom + sectionGap
+	todayTop    = lunchTop + headingOffset + lunchLineBudget*rowHeight + sectionGap
+	homeworkTop = todayTop + headingOffset + todayLineBudget*rowHeight + sectionGap
+	upcomingTop = homeworkTop + headingOffset + homeworkLineBudget*rowHeight + sectionGap
 )
 
 var (
-	screenRect      = image.Rect(0, 0, ScreenWidth, ScreenHeight)
-	headerRect      = image.Rect(outerMargin, contentTop, ScreenWidth-outerMargin, headerRuleY)
-	leftColumnRect  = image.Rect(leftColumnX0, bodyTop, leftColumnX1, contentBottom)
-	rightColumnRect = image.Rect(rightColumnX0, bodyTop, rightColumnX1, contentBottom)
+	screenRect  = image.Rect(0, 0, ScreenWidth, ScreenHeight)
+	headerRect  = image.Rect(contentX0, contentTop, contentX1, headerRuleY)
+	contentRect = image.Rect(contentX0, bodyTop, contentX1, contentBottom)
+	weatherRect = image.Rect(weatherX0, clockY0, contentX1, bandBottom)
 )
 
 // ClockRect returns the clock region in screen coordinates. The clock is
 // drawn only inside it, so it can be partially refreshed on its own.
+// Min.Y and Max.Y are multiples of 8 because in portrait the panel's
+// native X axis is the portrait Y axis (the panel adapter rotates, per
+// ADR-0004), and a partial refresh needs byte-aligned native X edges. The
+// left and right edges are free. The weather block lies to its right and
+// never inside it.
 func ClockRect() image.Rectangle {
 	return image.Rect(clockX0, clockY0, clockX1, clockY1)
 }

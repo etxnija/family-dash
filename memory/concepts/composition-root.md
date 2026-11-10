@@ -92,7 +92,7 @@ merging, and deriving today/homework/upcoming views all live in
   reuse it rather than re-fetch inline.
 - `-eink-png <path>` (optional) switches `main()` into one-shot export mode
   after sources are built: `exportEinkPNG` fetches once, builds
-  `eink.NewView` → `eink.Render`, and `writePNG` encodes the 800x480 frame
+  `eink.NewView` → `eink.Render`, and `writePNG` encodes the 480x800 frame
   (returning the `Close` error, joined with any encode error). If
   `png.Encode` fails after `os.Create` succeeded, `writePNG` removes the
   file so a display reading that path never sees a truncated PNG. Note that
@@ -115,7 +115,7 @@ merging, and deriving today/homework/upcoming views all live in
   config_test`) covers `Load`; `cmd/family-dashboard/main_test.go`
   (`package main`) covers `buildSource`, `buildAdapters`, `fetchDashboard`
   (stub lunch/weather sources: nil, failing, succeeding), and `writePNG`
-  (decode-back 800x480, missing-directory error, encode failure removes the
+  (decode-back 480x800, missing-directory error, encode failure removes the
   partial file);
   `collector_test.go` (package `dashboard`) covers the fetch/merge/filter
   logic that used to live inline in `handleIndex`.

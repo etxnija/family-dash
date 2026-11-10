@@ -35,6 +35,10 @@ fully formatted: the 1-bit renderer only lays out strings.
   …) are unexported constants in `view.go`, shared by the renderer and
   tests. Empty sections stay empty slices/nil in `View`; the renderer
   draws the matching empty-state constant.
+- Rows stay one entry each (time/weekday/initial, owner, summary,
+  location, day label); the portrait renderer splits them into
+  prefix/body/suffix and wraps each to at most two lines itself, so the
+  view-model needed no change for the wrapping layout.
 
 ## Gotchas & Failure Modes
 - The heading/empty-state constants have no in-package caller until the
