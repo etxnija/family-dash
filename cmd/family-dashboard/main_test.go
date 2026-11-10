@@ -5,9 +5,7 @@ import (
 	"errors"
 	"flag"
 	"image"
-	"image/png"
 	"io"
-	"os"
 	"path/filepath"
 	"slices"
 	"testing"
@@ -18,14 +16,33 @@ import (
 	"family-dashboard/eink"
 	"family-dashboard/eink/epd"
 	"family-dashboard/eink/pngpanel"
+	"family-dashboard/eink/pngpanel/pngpaneltest"
 )
 
+// parseFlagsCase is one successful parseFlags call.
+type parseFlagsCase struct {
+	name string
+	args []string
+	want options
+}
+
+func runParseFlagsCases(t *testing.T, tests []parseFlagsCase) {
+	t.Helper()
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := parseFlags(tt.args, io.Discard)
+			if err != nil {
+				t.Fatalf("parseFlags(%q) unexpected error: %v", tt.args, err)
+			}
+			if got != tt.want {
+				t.Errorf("parseFlags(%q) = %+v, want %+v", tt.args, got, tt.want)
+			}
+		})
+	}
+}
+
 func TestParseFlags(t *testing.T) {
-	tests := []struct {
-		name string
-		args []string
-		want options
-	}{
+	runParseFlagsCases(t, []parseFlagsCase{
 		{
 			name: "only config",
 			args: []string{"-config", "c.json"},
@@ -57,19 +74,37 @@ func TestParseFlags(t *testing.T) {
 			args: []string{"-config", "c.json", "-cable", "up"},
 			want: options{config: "c.json", addr: ":8080", cable: epd.CableLeft},
 		},
-	}
+	})
+}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got, err := parseFlags(tt.args, io.Discard)
-			if err != nil {
-				t.Fatalf("parseFlags(%q) unexpected error: %v", tt.args, err)
-			}
-			if got != tt.want {
-				t.Errorf("parseFlags(%q) = %+v, want %+v", tt.args, got, tt.want)
-			}
-		})
-	}
+func TestParseFlags_Loop(t *testing.T) {
+	runParseFlagsCases(t, []parseFlagsCase{
+		{
+			name: "loop with png uses default loop settings",
+			args: []string{"-config", "c.json", "-eink-loop", "-eink-png", "p"},
+			want: options{config: "c.json", addr: ":8080", einkPNG: "p", cable: epd.CableLeft,
+				einkLoop: true, loop: eink.LoopSettings{FetchEvery: 30 * time.Minute, FullEvery: time.Hour, SleepEveryUpdate: true}},
+		},
+		{
+			name: "loop with panel and cable right",
+			args: []string{"-config", "c.json", "-eink-loop", "-eink-panel", "-cable", "right"},
+			want: options{config: "c.json", addr: ":8080", einkPanel: true, cable: epd.CableRight,
+				einkLoop: true, loop: eink.LoopSettings{FetchEvery: 30 * time.Minute, FullEvery: time.Hour, SleepEveryUpdate: true}},
+		},
+		{
+			name: "all loop flags",
+			args: []string{"-config", "c.json", "-eink-loop", "-eink-panel",
+				"-eink-fetch-every", "1m", "-eink-full-every", "2h30m", "-eink-sleep"},
+			want: options{config: "c.json", addr: ":8080", einkPanel: true, cable: epd.CableLeft,
+				einkLoop: true, loop: eink.LoopSettings{FetchEvery: time.Minute, FullEvery: 150 * time.Minute, SleepEveryUpdate: true}},
+		},
+		{
+			name: "loop without sleep",
+			args: []string{"-config", "c.json", "-eink-loop", "-eink-png", "p", "-eink-sleep=false"},
+			want: options{config: "c.json", addr: ":8080", einkPNG: "p", cable: epd.CableLeft,
+				einkLoop: true, loop: eink.LoopSettings{FetchEvery: 30 * time.Minute, FullEvery: time.Hour}},
+		},
+	})
 }
 
 func TestParseFlags_Errors(t *testing.T) {
@@ -81,6 +116,13 @@ func TestParseFlags_Errors(t *testing.T) {
 		{name: "both eink flags", args: []string{"-config", "c.json", "-eink-png", "f.png", "-eink-panel"}},
 		{name: "panel invalid cable", args: []string{"-config", "c.json", "-eink-panel", "-cable", "up"}},
 		{name: "unknown flag", args: []string{"-config", "c.json", "-bogus"}},
+		{name: "loop alone", args: []string{"-config", "c.json", "-eink-loop"}},
+		{name: "loop with both eink flags", args: []string{"-config", "c.json", "-eink-loop", "-eink-png", "f.png", "-eink-panel"}},
+		{name: "fetch-every without loop", args: []string{"-config", "c.json", "-eink-png", "f.png", "-eink-fetch-every", "30m"}},
+		{name: "full-every without loop", args: []string{"-config", "c.json", "-eink-panel", "-eink-full-every", "1h"}},
+		{name: "sleep without loop", args: []string{"-config", "c.json", "-eink-panel", "-eink-sleep=false"}},
+		{name: "fetch-every under a minute", args: []string{"-config", "c.json", "-eink-loop", "-eink-png", "f.png", "-eink-fetch-every", "30s"}},
+		{name: "full-every under a minute", args: []string{"-config", "c.json", "-eink-loop", "-eink-png", "f.png", "-eink-full-every", "59s"}},
 	}
 
 	for _, tt := range tests {
@@ -262,34 +304,33 @@ func TestShowOnce_PNGPanel(t *testing.T) {
 	if err := showOnce(context.Background(), pngpanel.New(path), dashboard.NewCollector(nil), nil, nil, now); err != nil {
 		t.Fatalf("showOnce() unexpected error: %v", err)
 	}
-
-	f, err := os.Open(path)
-	if err != nil {
-		t.Fatalf("opening written PNG: %v", err)
-	}
-	decoded, err := png.Decode(f)
-	if cerr := f.Close(); cerr != nil {
-		t.Fatalf("closing written PNG: %v", cerr)
-	}
-	if err != nil {
-		t.Fatalf("png.Decode() unexpected error: %v", err)
-	}
-	if b := decoded.Bounds(); b.Dx() != 480 || b.Dy() != 800 {
-		t.Errorf("decoded bounds = %v, want 480x800", b)
-	}
+	pngpaneltest.AssertFrame(t, path)
 }
 
-// fakePanel records the calls made to it; fullErr is returned from Full.
+// fakePanel records the calls made to it; fullErr is returned from Full,
+// and onFull (if set) is called on every Full.
 type fakePanel struct {
 	calls   []string
 	frames  []image.Image
+	rects   []image.Rectangle
 	fullErr error
+	onFull  func()
 }
 
 func (p *fakePanel) Full(frame image.Image) error {
 	p.calls = append(p.calls, "Full")
 	p.frames = append(p.frames, frame)
+	if p.onFull != nil {
+		p.onFull()
+	}
 	return p.fullErr
+}
+
+func (p *fakePanel) Partial(frame image.Image, rect image.Rectangle) error {
+	p.calls = append(p.calls, "Partial")
+	p.frames = append(p.frames, frame)
+	p.rects = append(p.rects, rect)
+	return nil
 }
 
 func (p *fakePanel) Sleep() error {
@@ -326,15 +367,52 @@ func TestShowOnce_PanelCalls(t *testing.T) {
 			} else if err != nil {
 				t.Errorf("showOnce() unexpected error: %v", err)
 			}
-			if want := []string{"Full", "Sleep", "Close"}; !slices.Equal(panel.calls, want) {
-				t.Errorf("panel calls = %v, want %v", panel.calls, want)
-			}
-			if len(panel.frames) != 1 {
-				t.Fatalf("Full() called with %d frames, want 1", len(panel.frames))
-			}
-			if b := panel.frames[0].Bounds(); b.Dx() != eink.ScreenWidth || b.Dy() != eink.ScreenHeight {
-				t.Errorf("Full() frame bounds = %v, want %dx%d", b, eink.ScreenWidth, eink.ScreenHeight)
-			}
+			checkOneFullFrame(t, panel, []string{"Full", "Sleep", "Close"})
 		})
+	}
+}
+
+func TestRunLoop(t *testing.T) {
+	tests := []struct {
+		name      string
+		sleep     bool
+		wantCalls []string
+	}{
+		// The loop sleeps the panel after the first update and again on
+		// shutdown.
+		{name: "sleep after every update", sleep: true, wantCalls: []string{"Full", "Sleep", "Sleep", "Close"}},
+		{name: "sleep only on shutdown", sleep: false, wantCalls: []string{"Full", "Sleep", "Close"}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+			// Cancelling in Full stops the loop before its first tick, so
+			// SystemClock never really sleeps.
+			panel := &fakePanel{onFull: cancel}
+			settings := eink.DefaultLoopSettings()
+			settings.SleepEveryUpdate = tt.sleep
+
+			if err := runLoop(ctx, panel, eink.SystemClock{}, dashboard.NewCollector(nil), nil, nil, settings); err != nil {
+				t.Fatalf("runLoop() unexpected error: %v", err)
+			}
+			checkOneFullFrame(t, panel, tt.wantCalls)
+		})
+	}
+}
+
+// checkOneFullFrame checks that panel got wantCalls and exactly one
+// full-screen frame.
+func checkOneFullFrame(t *testing.T, panel *fakePanel, wantCalls []string) {
+	t.Helper()
+	if !slices.Equal(panel.calls, wantCalls) {
+		t.Errorf("panel calls = %v, want %v", panel.calls, wantCalls)
+	}
+	if len(panel.frames) != 1 {
+		t.Fatalf("Full() called with %d frames, want 1", len(panel.frames))
+	}
+	if b := panel.frames[0].Bounds(); b.Dx() != eink.ScreenWidth || b.Dy() != eink.ScreenHeight {
+		t.Errorf("Full() frame bounds = %v, want %dx%d", b, eink.ScreenWidth, eink.ScreenHeight)
 	}
 }

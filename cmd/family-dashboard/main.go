@@ -12,6 +12,8 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
+	"os/signal"
+	"syscall"
 	"time"
 
 	dashboard "family-dashboard"
@@ -44,28 +46,12 @@ func main() {
 
 	collector, lunchSource, weatherSource := buildAdapters(cfg)
 
-	if opts.einkPNG != "" {
-		panel := pngpanel.New(opts.einkPNG)
-		if err := showOnce(context.Background(), panel, collector, lunchSource, weatherSource, time.Now()); err != nil {
-			slog.Error("writing e-paper frame", "path", opts.einkPNG, "error", err)
-			os.Exit(1)
-		}
-		slog.Info("wrote e-paper frame", "path", opts.einkPNG)
+	if opts.einkLoop {
+		runEinkLoop(opts, collector, lunchSource, weatherSource)
 		return
 	}
-
-	if opts.einkPanel {
-		// A failed New leaves no panel to sleep or close.
-		panel, err := epd.New(opts.cable)
-		if err != nil {
-			slog.Error("opening e-paper panel", "error", err)
-			os.Exit(1)
-		}
-		if err := showOnce(context.Background(), panel, collector, lunchSource, weatherSource, time.Now()); err != nil {
-			slog.Error("drawing e-paper frame", "error", err)
-			os.Exit(1)
-		}
-		slog.Info("drew e-paper frame")
+	if opts.einkPNG != "" || opts.einkPanel {
+		showEinkOnce(opts, collector, lunchSource, weatherSource)
 		return
 	}
 
@@ -78,6 +64,62 @@ func main() {
 	}
 }
 
+// openPanel returns the panel for -eink-png or -eink-panel. A failed epd.New
+// leaves no panel to sleep or close.
+func openPanel(opts options) (eink.Panel, error) {
+	if opts.einkPNG != "" {
+		return pngpanel.New(opts.einkPNG), nil
+	}
+	panel, err := epd.New(opts.cable)
+	if err != nil {
+		return nil, err
+	}
+	return panel, nil
+}
+
+// runEinkLoop keeps the -eink-png or -eink-panel output up to date until
+// SIGINT or SIGTERM; it exits 1 on failure.
+func runEinkLoop(opts options, collector *dashboard.Collector, lunchSource dashboard.LunchSource, weatherSource dashboard.WeatherSource) {
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
+	panel, err := openPanel(opts)
+	if err != nil {
+		slog.Error("opening e-paper panel", "error", err)
+		stop()
+		os.Exit(1)
+	}
+	if err := runLoop(ctx, panel, eink.SystemClock{}, collector, lunchSource, weatherSource, opts.loop); err != nil {
+		slog.Error("running e-paper loop", "error", err)
+		stop()
+		os.Exit(1)
+	}
+	slog.Info("e-paper loop stopped")
+}
+
+// showEinkOnce shows one frame on the -eink-png or -eink-panel output; it
+// exits 1 on failure.
+func showEinkOnce(opts options, collector *dashboard.Collector, lunchSource dashboard.LunchSource, weatherSource dashboard.WeatherSource) {
+	panel, err := openPanel(opts)
+	if err != nil {
+		slog.Error("opening e-paper panel", "error", err)
+		os.Exit(1)
+	}
+	err = showOnce(context.Background(), panel, collector, lunchSource, weatherSource, time.Now())
+	switch {
+	case err != nil && opts.einkPNG != "":
+		slog.Error("writing e-paper frame", "path", opts.einkPNG, "error", err)
+		os.Exit(1)
+	case err != nil:
+		slog.Error("drawing e-paper frame", "error", err)
+		os.Exit(1)
+	case opts.einkPNG != "":
+		slog.Info("wrote e-paper frame", "path", opts.einkPNG)
+	default:
+		slog.Info("drew e-paper frame")
+	}
+}
+
 // options are the parsed command-line flags.
 type options struct {
 	config    string
@@ -86,25 +128,43 @@ type options struct {
 	einkPanel bool
 	// cable is only parsed with einkPanel; otherwise it stays CableLeft.
 	cable epd.Cable
+	// einkLoop keeps the -eink-png or -eink-panel output up to date
+	// instead of showing one frame.
+	einkLoop bool
+	// loop is only set with einkLoop; otherwise it stays zero.
+	loop eink.LoopSettings
 }
+
+// minLoopInterval is the shortest -eink-fetch-every and -eink-full-every
+// accepted; the loop ticks once a minute, so anything shorter is moot.
+const minLoopInterval = time.Minute
 
 // parseFlags parses args (without the program name). flag package errors and
 // usage go to output; validation errors are logged with slog. It returns
 // flag.ErrHelp for -h, and an error for a missing -config (ADR-0001),
-// -eink-png together with -eink-panel, or an invalid -cable with
-// -eink-panel; -cable is ignored without -eink-panel.
+// -eink-png together with -eink-panel, an invalid -cable with -eink-panel,
+// -eink-loop without one of -eink-png or -eink-panel, a loop flag
+// (-eink-fetch-every, -eink-full-every, -eink-sleep) without -eink-loop, or
+// a loop interval under a minute; -cable is ignored without -eink-panel.
 func parseFlags(args []string, output io.Writer) (options, error) {
 	fs := flag.NewFlagSet("family-dashboard", flag.ContinueOnError)
 	fs.SetOutput(output)
 	var opts options
 	fs.StringVar(&opts.config, "config", "", "path to the sources config file (required)")
 	fs.StringVar(&opts.addr, "addr", ":8080", "address to listen on")
-	fs.StringVar(&opts.einkPNG, "eink-png", "", "render the e-paper frame to this PNG file and exit")
-	fs.BoolVar(&opts.einkPanel, "eink-panel", false, "draw one frame on the e-paper panel, sleep it and exit")
+	fs.StringVar(&opts.einkPNG, "eink-png", "", "render the e-paper frame to this PNG file and exit; with -eink-loop, keep it up to date")
+	fs.BoolVar(&opts.einkPanel, "eink-panel", false, "draw one frame on the e-paper panel, sleep it and exit; with -eink-loop, keep it up to date")
 	cable := fs.String("cable", "left", "side of the portrait frame where the panel cable exits: left|right; only with -eink-panel")
+	loop := eink.DefaultLoopSettings()
+	fs.BoolVar(&opts.einkLoop, "eink-loop", false, "keep the -eink-png or -eink-panel output up to date until SIGINT or SIGTERM")
+	fs.DurationVar(&loop.FetchEvery, "eink-fetch-every", loop.FetchEvery, "how often -eink-loop fetches the dashboard data (at least 1m)")
+	fs.DurationVar(&loop.FullEvery, "eink-full-every", loop.FullEvery, "longest time between full refreshes in -eink-loop (at least 1m)")
+	fs.BoolVar(&loop.SleepEveryUpdate, "eink-sleep", loop.SleepEveryUpdate, "put the panel to sleep after every -eink-loop update")
 	if err := fs.Parse(args); err != nil {
 		return options{}, err
 	}
+	set := map[string]bool{}
+	fs.Visit(func(f *flag.Flag) { set[f.Name] = true })
 
 	usageErr := func(err error) (options, error) {
 		slog.Error("invalid flags", "error", err)
@@ -124,7 +184,36 @@ func parseFlags(args []string, output io.Writer) (options, error) {
 		}
 		opts.cable = c
 	}
+	if err := validateLoopFlags(opts, loop, set); err != nil {
+		return usageErr(err)
+	}
+	if opts.einkLoop {
+		opts.loop = loop
+	}
 	return opts, nil
+}
+
+// validateLoopFlags checks the loop settings parsed from the flags against
+// opts. set holds the names of the flags given.
+func validateLoopFlags(opts options, loop eink.LoopSettings, set map[string]bool) error {
+	if !opts.einkLoop {
+		for _, name := range []string{"eink-fetch-every", "eink-full-every", "eink-sleep"} {
+			if set[name] {
+				return fmt.Errorf("-%s requires -eink-loop", name)
+			}
+		}
+		return nil
+	}
+	if opts.einkPNG == "" && !opts.einkPanel {
+		return errors.New("-eink-loop requires -eink-png or -eink-panel")
+	}
+	if loop.FetchEvery < minLoopInterval {
+		return fmt.Errorf("-eink-fetch-every %v is under %v", loop.FetchEvery, minLoopInterval)
+	}
+	if loop.FullEvery < minLoopInterval {
+		return fmt.Errorf("-eink-full-every %v is under %v", loop.FullEvery, minLoopInterval)
+	}
+	return nil
 }
 
 // buildAdapters constructs the event collector and the lunch and weather
@@ -242,6 +331,18 @@ func showOnce(ctx context.Context, panel eink.Panel, collector *dashboard.Collec
 		errs = append(errs, fmt.Errorf("closing panel: %w", err))
 	}
 	return errors.Join(errs...)
+}
+
+// runLoop keeps panel up to date with the dashboard data until ctx is
+// cancelled, fetching through fetchDashboard on clock's schedule. The loop
+// owns panel and closes it when runLoop returns; it returns nil on
+// cancellation and an error if the first view cannot be built.
+func runLoop(ctx context.Context, panel eink.Panel, clock eink.Clock, collector *dashboard.Collector, lunchSource dashboard.LunchSource, weatherSource dashboard.WeatherSource, settings eink.LoopSettings) error {
+	views := func(ctx context.Context, now time.Time) (eink.View, error) {
+		d := fetchDashboard(ctx, collector, lunchSource, weatherSource, now)
+		return eink.NewView(d.Today, d.Homework, d.Upcoming, d.Owners, d.Lunch, d.Weather, now)
+	}
+	return eink.NewLoop(panel, views, clock, settings).Run(ctx)
 }
 
 // buildSource constructs the dashboard.EventSource adapter for cfg.

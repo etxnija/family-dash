@@ -1,11 +1,11 @@
 ---
 type: component
-tags: [eink, epaper, render, adapter, hexagonal, font, panel, port, pngpanel, epd, rotation, build-constraints, cable]
-summary: eink/ e-paper adapter — Panel port (Full/Sleep/Close) with three adapters (pngpanel PNG writer, linux/arm Waveshare 7.5" V2 epd driver, non-linux/arm epd stub), pure rotate.go (-cable left/right mapping), driver call order and rotate_ms/refresh_ms logs; Stockholm view-model, 1-bit portrait 480x800 renderer (Go Mono, single column, clock/weather band, two-line wrapped entries, content-height sections trimmed by priority, ClockRect top/bottom on multiples of 8), plus verified driver facts.
+tags: [eink, epaper, render, adapter, hexagonal, font, panel, port, pngpanel, epd, rotation, build-constraints, cable, refresh-loop, clock, partial, eink-loop, flags, sleep]
+summary: eink/ e-paper adapter — Panel port (Full/Partial/Sleep/Close) with three adapters (pngpanel PNG writer, linux/arm Waveshare 7.5" V2 epd driver, non-linux/arm epd stub), pure rotate.go (-cable left/right mapping, Rotate/RotateRect), driver call order and rotate_ms/refresh_ms logs; eink.Loop refresh loop behind -eink-loop (fetch every 30m/new day with 5m retry, full/partial/none by pixel diff around ClockRect, Sleep then single Close on SIGINT/SIGTERM, -eink-fetch-every/-eink-full-every/-eink-sleep; partial after Sleep UNVERIFIED on hardware); Stockholm view-model, 1-bit portrait 480x800 renderer (Go Mono, single column, clock/weather band, two-line wrapped entries, content-height sections trimmed by priority, ClockRect top/bottom on multiples of 8), plus verified driver facts.
 links: [docs/arch/adr/0002-dual-display-adapters-over-shared-interface.md, docs/arch/adr/0003-eink-panel-port-and-refresh-policy.md, docs/arch/adr/0004-portrait-frame-rotated-by-panel-adapter.md, docs/raspberry-pi-setup.md, dashboard-page.md, composition-root.md, eink-view.md]
-updated: 2026-11-10
+updated: 2026-11-10 (Partial, RotateRect, eink.Loop and the -eink-loop flags documented)
 generated: { by: worker, at: 2026-11-10T00:00:00Z }
-verified: [{ by: "human", at: 2026-11-10 }, { by: "human", at: 2026-11-10 }, { by: "human", at: 2026-11-10 }, { by: "human", at: 2026-11-10 }]
+verified: [{ by: "human", at: 2026-11-10 }, { by: "human", at: 2026-11-10 }, { by: "human", at: 2026-11-10 }, { by: "human", at: 2026-11-10 }, { by: "human", at: 2026-11-10 }]
 ---
 
 # E-paper Adapter (`eink/`)
@@ -23,9 +23,11 @@ renderer and imports nothing from `web`. Frames are shown through the
 [ADR-0003](../../docs/arch/adr/0003-eink-panel-port-and-refresh-policy.md)).
 There are two real adapters: `eink/pngpanel` writes the frame to a PNG
 (`-eink-png`), and `eink/epd` drives the Waveshare panel on linux/arm
-(`-eink-panel`), both one-shot (see
+(`-eink-panel`). Alone, both flags are one-shot; with `-eink-loop` the
+same panel is driven by `eink.Loop` (`eink/loop.go`, "Refresh loop"
+below), which uses `Partial` for the clock (see
 [composition-root.md](composition-root.md) and "Panel port and adapters"
-below). A refresh loop with partial clock refreshes comes later.
+below).
 
 ## Key Rules & Mechanics
 - `NewView` (`eink/view.go`, details in [eink-view.md](eink-view.md))
@@ -134,28 +136,31 @@ below). A refresh loop with partial clock refreshes comes later.
 
 ## Panel port and adapters
 - The port is `eink.Panel` (`eink/panel.go`): `Full(frame image.Image)
-  error`, `Sleep() error`, `Close() error`. Frames are portrait
-  `ScreenWidth` x `ScreenHeight` as drawn by `Render`; the adapter does
-  any rotation. It is this small on purpose: the current slice only
-  shows one frame and exits, so it needs nothing else. The partial
-  refresh of `ClockRect()` that ADR-0003 puts in the port is added with
-  the refresh loop, not before.
+  error`, `Partial(frame image.Image, rect image.Rectangle) error`,
+  `Sleep() error`, `Close() error`. Frames are portrait `ScreenWidth` x
+  `ScreenHeight` as drawn by `Render`; the adapter does any rotation.
+  `Partial` takes the whole frame plus a portrait `rect` (e.g.
+  `ClockRect()`); the adapter crops and rotates it, and the panel keeps
+  showing everything outside `rect` (ADR-0003).
 - Callers call `Sleep` after every update and `Close` when done; the
   one-shot helper `showOnce` always calls both, even after a failure.
 - There are three adapters:
   - `eink/pngpanel`: `New(path)` writes each `Full` frame to `path` as a
     PNG. It rejects a frame that is not 480x800 before creating the file
     (the error names the bounds) and removes the partial file if
-    `png.Encode` fails. `Sleep` and `Close` are no-ops. It imports `eink`
+    `png.Encode` fails. `Partial` writes the whole frame exactly like
+    `Full` (rect ignored, shared `write` helper), so the file always
+    shows the latest frame. `Sleep` and `Close` are no-ops. It imports `eink`
     only for the size constants.
   - `eink/epd` on linux/arm drives the Waveshare 7.5" V2 through
     `github.com/ditrytus/epd7in5v2` v0.1.0.
   - `eink/epd` elsewhere is a stub with the same exported API, whose
-    `New`, `Full`, `Sleep` and `Close` all return "e-paper panel is only
+    `New`, `Full`, `Partial`, `Sleep` and `Close` all return "e-paper panel is only
     supported on linux/arm".
 - Build-constraint split in `eink/epd`:
   - `rotate.go` has no build constraint. It holds the pure half (`Cable`,
-    `ParseCable`, `Rotate`) and is tested on every platform.
+    `ParseCable`, `Rotate`, `RotateRect`) and is tested on every
+    platform.
   - `device.go` has no build constraint either. It holds `devicePanel`,
     the call order and error wrapping behind a small `device` interface,
     so `device_test.go` tests it on the host with a fake.
@@ -175,7 +180,16 @@ below). A refresh loop with partial clock refreshes comes later.
 
   The portrait `ClockRect()` Y edges 88/176 therefore become native X
   edges 88/176 (left) or 624/712 (right), both byte-aligned
-  (`TestRotate_ClockRect`). Which name matches which physical cable side
+  (`TestRotate_ClockRect`).
+- `RotateRect(frame, rect, cable)` validates like `Rotate`, then rejects
+  an empty `rect`, one not inside 480x800 (relative to the frame's own
+  origin), and one whose native X edges are not multiples of 8. The
+  native rect is X `[y0, y1)`, Y `[480-x1, 480-x0)` (left) or X
+  `[800-y1, 800-y0)`, Y `[x0, x1)` (right). It returns a `(0,0)`-origin
+  `*image.Gray` of the native rect's size, the shape `DisplayPart`
+  wants, plus the native rect. Both functions fill pixels through the
+  shared `rotateInto`, so a `RotateRect` pixel always equals `Rotate`'s
+  at the same point offset by the native rect's Min (`TestRotateRect`). Which name matches which physical cable side
   has not been checked on the panel yet. If the image comes out upside
   down, use the other value.
 - Driver call order (`devicePanel`):
@@ -184,12 +198,21 @@ below). A refresh loop with partial clock refreshes comes later.
   - `Full` runs `Rotate`, checks the result against `ScreenBounds`, then
     calls `Init()` before every `DisplayImage`. Every `Full` is a full
     refresh (about 4 s).
+  - `Partial` runs `RotateRect`, checks the native rect lies inside
+    `ScreenBounds`, then calls `InitPart` and `DisplayPart(small,
+    nativeRect)`. `Full`'s `Init` returns the controller from partial
+    mode.
   - `Sleep()` follows every update and `Close()` comes last. Both are
-    called by the caller (`showOnce`), not by `Full`.
+    called by the caller (`showOnce` or `eink.Loop`), not by `Full` or
+    `Partial`.
   - Errors are wrapped with the step name (`epd: gpio init`, `epd:
-    rotate`, `epd: init`, `epd: display`, `epd: sleep`, `epd: close`).
+    rotate`, `epd: init`, `epd: display`, `epd: rotate rect`, `epd: init
+    part`, `epd: display part`, `epd: sleep`, `epd: close`).
 - `Full` logs `rotated e-paper frame` with `rotate_ms` and `cable`, then
-  `full refresh` with `refresh_ms` (Init + DisplayImage).
+  `full refresh` with `refresh_ms` (Init + DisplayImage). `Partial`
+  logs `rotated e-paper rect` with `rotate_ms`, `cable` and
+  `native_rect`, then `partial refresh` with `partial_ms` (InitPart +
+  DisplayPart).
 - The sensors only build for the host. Check `epd.go` changes and build
   the Pi binary with
   `GOOS=linux GOARCH=arm GOARM=6 CGO_ENABLED=0 go build ./... && GOOS=linux GOARCH=arm GOARM=6 go vet ./...`
@@ -202,6 +225,58 @@ below). A refresh loop with partial clock refreshes comes later.
   closing anything. So if `rst` is found but `dc` or `pwr` is not, the
   `Close()` in `New` calls `Out` on a nil interface and panics. Not seen
   on the Pi Zero W.
+
+## Refresh loop (`eink/loop.go`)
+- `NewLoop(panel, views, clock, settings).Run(ctx)`. `ViewSource` is
+  `func(ctx, now) (View, error)`; `Clock` is `Now`/`Sleep(ctx, d)`
+  (`SystemClock` is the real one, tests use a fake that advances time).
+  `DefaultLoopSettings()`: `FetchEvery` 30m, `FullEvery` 1h,
+  `SleepEveryUpdate` true.
+- Start: load Stockholm, fetch, `Full` (reason `"start"`). A failing first
+  fetch closes the panel and returns the error; a failing first `Full` is
+  only logged and retried.
+- Each tick sleeps until the next minute plus `tickOffset` (2 s), so the
+  shown minute is the new one. A fetch is due when `FetchEvery` has passed
+  or the Stockholm date changed since the last successful fetch, but not
+  within `FetchRetryDelay` (5m) of a failed one; a failed fetch keeps the
+  previous view.
+- Each tick renders the view with `clockText(now)` and compares it with
+  the shown frame (`diffPixels`, split outside/inside `ClockRect()`).
+  Decision order: `full`/`"retry"` after a failed refresh, `full`/
+  `"interval"` after `FullEvery`, `full`/`"content changed"` if a pixel
+  outside the clock differs, `partial`/`"clock"` if one inside differs,
+  else `none`. Every decision is logged as `e-paper update` with
+  `refresh`, `reason`, `clock`, `changed_pixels`, `since_full`.
+- The shown frame only changes on a successful refresh, so a failed
+  `Partial` is redone as a `Full`. `Sleep` follows every panel call when
+  `SleepEveryUpdate` (errors logged, never fatal).
+- Why this order: a full refresh takes about 4 s and flashes, a partial
+  about 0.4 s, so the loop does the cheapest refresh that leaves the
+  panel right. Partial refreshes ghost, so `FullEvery` forces a full one
+  regularly. `Partial` only redraws `ClockRect()`, so any change outside
+  it (new events, weather, a new day) needs a full refresh. After a
+  failed refresh the panel's content is unknown, so only a full refresh
+  makes it right again. If no pixel changed, nothing is sent.
+- Cancellation: `Sleep` then `Close`, returns nil. `Close` is a single
+  defer in `Run`, so it runs exactly once on every exit path. With
+  `SleepEveryUpdate` the panel is therefore slept twice at shutdown (after
+  the last update and in `shutdown`); this is known and not yet decided.
+- `cmd` runs the loop under `signal.NotifyContext` (SIGINT, SIGTERM), so a
+  signal cancels `ctx` and the process exits 0; a failing first fetch
+  exits 1 (see [composition-root.md](composition-root.md)).
+- Flags (all need `-eink-loop`, which needs exactly one of `-eink-png` /
+  `-eink-panel`):
+  - `-eink-loop`: run the loop instead of drawing one frame. With
+    `-eink-png` the PNG is rewritten on every full or partial refresh.
+  - `-eink-fetch-every` (default 30m, at least 1m): `FetchEvery`.
+  - `-eink-full-every` (default 1h, at least 1m): `FullEvery`.
+  - `-eink-sleep` (default true): `SleepEveryUpdate`.
+- **UNVERIFIED on the real panel:** a partial refresh after `Sleep`. The
+  verified facts below cover `InitPart` + `DisplayPart` on an awake panel
+  only. Whether `InitPart` alone wakes the panel from `Sleep` and keeps
+  the previous image as the base for the partial update has not been
+  tested. `-eink-sleep=false` exists so a human can run the loop on the
+  Pi without sleeping between updates and compare the two.
 
 ## Hardware and driver facts for the panel adapter
 Verified on a Pi Zero W with the Waveshare 7.5" V2 and

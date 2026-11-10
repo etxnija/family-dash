@@ -12,7 +12,7 @@ import (
 	"family-dashboard/eink"
 )
 
-// Panel writes every full refresh to a PNG file at path.
+// Panel writes every refresh, full or partial, to a PNG file at path.
 type Panel struct {
 	path string
 }
@@ -26,6 +26,17 @@ func New(path string) *Panel {
 // eink.ScreenWidth x eink.ScreenHeight. If encoding fails, the partially
 // written file is removed so a reader never sees a truncated PNG.
 func (p *Panel) Full(frame image.Image) error {
+	return p.write(frame)
+}
+
+// Partial writes the whole frame exactly like Full and ignores rect, so the
+// file always shows the latest frame.
+func (p *Panel) Partial(frame image.Image, rect image.Rectangle) error {
+	return p.write(frame)
+}
+
+// write checks frame's size and encodes it to the panel's path.
+func (p *Panel) write(frame image.Image) error {
 	if b := frame.Bounds(); b.Dx() != eink.ScreenWidth || b.Dy() != eink.ScreenHeight {
 		return fmt.Errorf("pngpanel: frame bounds %v, want %dx%d", b, eink.ScreenWidth, eink.ScreenHeight)
 	}
@@ -42,5 +53,5 @@ func (p *Panel) Full(frame image.Image) error {
 // Sleep does nothing; a file has no low-power state.
 func (p *Panel) Sleep() error { return nil }
 
-// Close does nothing; Full closes the file it writes.
+// Close does nothing; every refresh closes the file it writes.
 func (p *Panel) Close() error { return nil }

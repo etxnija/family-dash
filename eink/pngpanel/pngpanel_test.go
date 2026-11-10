@@ -3,32 +3,38 @@ package pngpanel_test
 import (
 	"errors"
 	"image"
-	"image/png"
 	"os"
 	"path/filepath"
 	"testing"
 
 	"family-dashboard/eink"
 	"family-dashboard/eink/pngpanel"
+	"family-dashboard/eink/pngpanel/pngpaneltest"
 )
 
-func TestPanel_Full(t *testing.T) {
+func TestPanel_FullAndPartial(t *testing.T) {
 	dir := t.TempDir()
 	frame := image.NewGray(image.Rect(0, 0, eink.ScreenWidth, eink.ScreenHeight))
+	clock := eink.ClockRect()
+	full := func(p *pngpanel.Panel, f image.Image) error { return p.Full(f) }
+	partial := func(p *pngpanel.Panel, f image.Image) error { return p.Partial(f, clock) }
 
 	tests := []struct {
 		name    string
+		call    func(*pngpanel.Panel, image.Image) error
 		path    string
 		frame   image.Image
 		wantErr bool
 	}{
 		{
-			name:  "writes decodable 480x800 frame",
+			name:  "Full writes decodable 480x800 frame",
+			call:  full,
 			path:  filepath.Join(dir, "frame.png"),
 			frame: frame,
 		},
 		{
-			name:    "landscape frame is rejected without creating a file",
+			name:    "Full rejects landscape frame without creating a file",
+			call:    full,
 			path:    filepath.Join(dir, "landscape.png"),
 			frame:   image.NewGray(image.Rect(0, 0, eink.ScreenHeight, eink.ScreenWidth)),
 			wantErr: true,
@@ -36,25 +42,40 @@ func TestPanel_Full(t *testing.T) {
 		// png.Encode would reject a zero-size image after os.Create had made
 		// the file; the size check rejects it first, so nothing is left behind.
 		{
-			name:    "empty frame is rejected without creating a file",
+			name:    "Full rejects empty frame without creating a file",
+			call:    full,
 			path:    filepath.Join(dir, "empty.png"),
 			frame:   image.NewGray(image.Rect(0, 0, 0, 0)),
 			wantErr: true,
 		},
 		{
-			name:    "missing directory",
+			name:    "Full to missing directory",
+			call:    full,
 			path:    filepath.Join(dir, "missing", "frame.png"),
 			frame:   frame,
+			wantErr: true,
+		},
+		{
+			name:  "Partial writes the whole decodable 480x800 frame",
+			call:  partial,
+			path:  filepath.Join(dir, "partial.png"),
+			frame: frame,
+		},
+		{
+			name:    "Partial rejects wrong-size frame without creating a file",
+			call:    partial,
+			path:    filepath.Join(dir, "small.png"),
+			frame:   image.NewGray(clock),
 			wantErr: true,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			err := pngpanel.New(tt.path).Full(tt.frame)
+			err := tt.call(pngpanel.New(tt.path), tt.frame)
 			if tt.wantErr {
 				if err == nil {
-					t.Fatalf("Full() to %q = nil error, want error", tt.path)
+					t.Fatalf("write to %q = nil error, want error", tt.path)
 				}
 				if _, statErr := os.Stat(tt.path); !errors.Is(statErr, os.ErrNotExist) {
 					t.Errorf("os.Stat(%q) error = %v, want file not to exist", tt.path, statErr)
@@ -62,23 +83,9 @@ func TestPanel_Full(t *testing.T) {
 				return
 			}
 			if err != nil {
-				t.Fatalf("Full() to %q unexpected error: %v", tt.path, err)
+				t.Fatalf("write to %q unexpected error: %v", tt.path, err)
 			}
-
-			f, err := os.Open(tt.path)
-			if err != nil {
-				t.Fatalf("opening written PNG: %v", err)
-			}
-			decoded, err := png.Decode(f)
-			if cerr := f.Close(); cerr != nil {
-				t.Fatalf("closing written PNG: %v", cerr)
-			}
-			if err != nil {
-				t.Fatalf("png.Decode() unexpected error: %v", err)
-			}
-			if b := decoded.Bounds(); b.Dx() != eink.ScreenWidth || b.Dy() != eink.ScreenHeight {
-				t.Errorf("decoded bounds = %v, want %dx%d", b, eink.ScreenWidth, eink.ScreenHeight)
-			}
+			pngpaneltest.AssertFrame(t, tt.path)
 		})
 	}
 }

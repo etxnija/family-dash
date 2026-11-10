@@ -1,7 +1,7 @@
 # Raspberry Pi setup (Pi Zero W)
 
 How to prepare the Raspberry Pi that will host the dashboard and, later, drive the Waveshare 7.5" e-Paper screen. Written
-from the first setup session (Nov 2026). Steps marked **not yet verified** have not been run on the real hardware (so far: sections 1-7 verified).
+from the first setup session (Nov 2026). Steps marked **not yet verified** have not been run on the real hardware (so far: sections 1-8 verified).
 
 ## Hardware
 
@@ -125,6 +125,37 @@ Run it on the Pi with `./eink-spike`. No Go toolchain is needed on the Pi.
 - **The Python demo is not needed.** Waveshare's Python demo (section 6) and the Go driver both work, so the choice
   between them is a design choice, not a hardware limit.
 
+## 8. Run the dashboard on the panel (one-shot)
+
+Verified (Nov 2026): the real dashboard, rendered by the Go binary running on the Pi Zero W itself, shows correctly on
+the panel. The Pi fetches calendars, lunch and weather on its own, so it needs internet access (the phone hotspot works).
+
+Build on the Mac and copy the binary and the config to the Pi:
+
+```sh
+GOOS=linux GOARCH=arm GOARM=6 CGO_ENABLED=0 go build -o family-dashboard-pi ./cmd/family-dashboard
+scp family-dashboard-pi sources.local.json <user>@familydash.local:~/
+```
+
+`sources.local.json` holds private calendar URLs; it ends up in the Pi's home directory, so treat the card accordingly.
+On the Pi:
+
+```sh
+chmod +x family-dashboard-pi
+./family-dashboard-pi -config sources.local.json -eink-panel -cable left
+```
+
+The program fetches the data, renders the portrait 480x800 frame, rotates it to the panel's native 800x480, does one
+full refresh, puts the panel to sleep and exits. The picture stays on the panel without power.
+
+- `-cable left|right` is the side of the hung portrait frame where the panel's ribbon cable exits. With the ribbon
+  cable on the left of the frame, `-cable left` gives an upright picture (verified). If the picture is upside down,
+  use `-cable right`.
+- `-eink-png <path>` renders the same frame to a PNG instead, on any machine, to check a layout without hardware.
+- The log (stderr, JSON) contains `rotate_ms` and `refresh_ms`. Measured on the Zero W (Nov 2026): rotating the
+  frame took about 170 ms and the full refresh about 3.8 s; fetching the data over the phone hotspot took about 1 s, so
+  the whole run is roughly 6 s from start to exit.
+
 ## Troubleshooting: green LED flash codes (Pi 1/2/3/Zero)
 
 A repeating fixed count of flashes followed by a pause is an error code:
@@ -144,6 +175,8 @@ then verify `kernel.img` exists on `bootfs`.
 - Go driver vs. a separate Python renderer: the hardware supports both; see ADR-0002 and the e-ink adapter design.
 - Refresh strategy: partial refresh of the clock every minute, full refresh of the rest about hourly. Partial-refresh
   timing and ghosting over a longer period are not yet measured.
-- Deployment workflow: cross-compiling and copying a binary works by hand (section 7); a service/autostart setup and
-  a repeatable deploy command are not yet defined.
+- Refresh loop: the binary only does a one-shot refresh today (section 8); the minute clock, hourly full refresh and
+  partial refresh of the clock rectangle are not implemented yet.
+- Deployment workflow: cross-compiling and copying a binary works by hand (sections 7-8); a service/autostart setup
+  and a repeatable deploy command are not yet defined.
 - Switching the Pi between the phone hotspot and the home Wi-Fi is not yet documented.

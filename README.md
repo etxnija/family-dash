@@ -37,11 +37,12 @@ eink/
   view.go                      adapter: e-paper view-model (Swedish, Stockholm time)
   layout.go                    every layout constant of the portrait 480x800 frame
   render.go                    1-bit renderer: View → *image.Gray (Go Mono fonts)
-  panel.go                     Panel port: Full/Sleep/Close of a portrait frame
+  panel.go                     Panel port: Full/Partial/Sleep/Close of a portrait frame
+  loop.go                      refresh loop: fetch, then full/partial/no refresh every minute
   view_test.go, render_test.go adapter tests
   pngpanel/                    Panel adapter: writes each frame to a PNG file
   epd/                         Panel adapter for the Waveshare 7.5" V2 panel
-    rotate.go                  pure: -cable parsing, portrait → native 800x480 rotation
+    rotate.go                  pure: -cable parsing, portrait → native 800x480 rotation (frame and rect)
     epd.go                     linux && arm only: thin wrapper over the epd7in5v2 driver
     epd_other.go               stub elsewhere: every call returns "only supported on linux/arm"
 
@@ -51,7 +52,10 @@ cmd/
                                 `-config <file> -eink-png frame.png` writes one
                                 e-paper frame as PNG and exits;
                                 `-config <file> -eink-panel -cable left|right`
-                                draws one frame on the panel, sleeps it and exits
+                                draws one frame on the panel, sleeps it and exits;
+                                add `-eink-loop` to either to keep it up to date
+                                until SIGINT/SIGTERM (`-eink-fetch-every` 30m,
+                                `-eink-full-every` 1h, `-eink-sleep` true)
 
 AGENTS.md                      project conventions for AI agents working here
 CLAUDE.md                      pointer to AGENTS.md + memory/status.md
@@ -115,5 +119,9 @@ Per the PRD's phased rollout:
 - **Phase 4 (future, unscheduled):** swap the browser page for an e-ink display — the original inspiration, deferred for
   now.
   The `eink/` 1-bit renderer, its `-eink-png` PNG preview and a one-shot `-eink-panel` mode (draw one frame on the
-  Waveshare panel, sleep it, exit) exist; the refresh loop with partial clock refreshes comes next. Build the Pi binary
+  Waveshare panel, sleep it, exit) exist. `-eink-loop` keeps either one up to date: it fetches every `-eink-fetch-every`
+  (30m) and on a new day, and checks the frame every minute: a full refresh after a failed refresh, every
+  `-eink-full-every` (1h) or when anything outside the clock changed, a partial refresh of the clock when only the clock
+  changed, and nothing when no pixel changed. Partial refresh after `Sleep` is not yet tested on the panel; use
+  `-eink-sleep=false` to compare. Build the Pi binary
   with `GOOS=linux GOARCH=arm GOARM=6 CGO_ENABLED=0 go build -o family-dashboard-pi ./cmd/family-dashboard`.

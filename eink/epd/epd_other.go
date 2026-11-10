@@ -24,6 +24,9 @@ func New(cable Cable) (*Panel, error) {
 // Full always fails off linux/arm.
 func (*Panel) Full(frame image.Image) error { return errUnsupported }
 
+// Partial always fails off linux/arm.
+func (*Panel) Partial(frame image.Image, rect image.Rectangle) error { return errUnsupported }
+
 // Sleep always fails off linux/arm.
 func (*Panel) Sleep() error { return errUnsupported }
 

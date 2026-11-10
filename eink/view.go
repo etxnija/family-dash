@@ -103,13 +103,18 @@ func NewView(events, homeworkEvents, upcomingEvents []dashboard.Event, owners []
 		DateLabel: dateLabel(localNow),
 		WeekLabel: fmt.Sprintf("v.%d", week),
 		Owners:    strings.Join(owners, " · "),
-		Clock:     localNow.Format("15:04"),
+		Clock:     clockText(now, loc),
 		Weather:   buildWeatherView(weather),
 		Lunch:     lunch,
 		Events:    buildEventRows(events, loc),
 		Homework:  buildHomeworkGroups(homeworkEvents, owners, localNow, loc),
 		Upcoming:  buildUpcomingRows(upcomingEvents, loc),
 	}, nil
+}
+
+// clockText formats t as the "15:04" clock in loc.
+func clockText(t time.Time, loc *time.Location) string {
+	return t.In(loc).Format("15:04")
 }
 
 // dateLabel formats t as e.g. "Onsdag 16 september".

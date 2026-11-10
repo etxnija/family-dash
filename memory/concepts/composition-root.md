@@ -1,11 +1,11 @@
 ---
 type: component
-tags: [main, config, composition-root, multi-source, cmd, http, lunch, weather, eink, png, epd, flags]
-summary: cmd/family-dashboard main() — JSON sources+school+location config, adapter construction at startup, dashboard.Collector/LunchSource/WeatherSource wiring, fetchDashboard shared by the HTML handler and the one-shot showOnce helper (any eink.Panel, always Sleep+Close) behind -eink-png (pngpanel) and -eink-panel -cable left|right (epd); parseFlags validates flags (mutually exclusive eink modes, exit 2).
+tags: [main, config, composition-root, multi-source, cmd, http, lunch, weather, eink, png, epd, flags, loop, signal]
+summary: cmd/family-dashboard main() — JSON sources+school+location config, adapter construction at startup, dashboard.Collector/LunchSource/WeatherSource wiring, fetchDashboard shared by the HTML handler and the one-shot showOnce helper (any eink.Panel, always Sleep+Close) behind -eink-png (pngpanel) and -eink-panel -cable left|right (epd); -eink-loop runs eink.Loop on either panel via runLoop under signal.NotifyContext; parseFlags validates flags (mutually exclusive eink modes, loop-flag rules, exit 2).
 links: [docs/arch/adr/0001-config-path-via-required-flag.md, webcal-adapter.md, collector.md, skolmaten-adapter.md, smhi-adapter.md, eink-adapter.md]
-updated: 2026-11-10 (showOnce + pngpanel replace exportEinkPNG/writePNG; -eink-panel/-cable, exclusivity exit 2, always Sleep and Close)
+updated: 2026-11-10 (-eink-loop docs: loop flag rules, runLoop, SIGINT/SIGTERM exit codes)
 generated: { by: worker, at: 2026-09-18T00:00:00Z }
-verified: [{ by: "human", at: 2026-09-18 }, { by: "human", at: 2026-09-18 }, { by: "human", at: 2026-09-18 }, { by: "human", at: 2026-09-18 }, { by: "human", at: 2026-09-21 }, { by: "human", at: 2026-09-22 }, { by: "human", at: 2026-11-10 }, { by: "human", at: 2026-11-10 }]
+verified: [{ by: "human", at: 2026-09-18 }, { by: "human", at: 2026-09-18 }, { by: "human", at: 2026-09-18 }, { by: "human", at: 2026-09-18 }, { by: "human", at: 2026-09-21 }, { by: "human", at: 2026-09-22 }, { by: "human", at: 2026-11-10 }, { by: "human", at: 2026-11-10 }, { by: "human", at: 2026-11-10 }]
 ---
 
 # Composition Root (`cmd/family-dashboard`)
@@ -24,10 +24,18 @@ a separate `-addr` flag (default `:8080`).
 Flags are parsed by `parseFlags(args, output io.Writer) (options, error)`
 with its own `flag.FlagSet` (`ContinueOnError`), not the global `flag`
 package, so validation is table-tested (`TestParseFlags`). `options` holds
-`config`, `addr`, `einkPNG`, `einkPanel` and `cable epd.Cable`. It errors on
+`config`, `addr`, `einkPNG`, `einkPanel`, `cable epd.Cable`, `einkLoop` and
+`loop eink.LoopSettings`. It errors on
 a missing `-config` (ADR-0001), `-eink-png` together with `-eink-panel`, an
 invalid `-cable` when `-eink-panel` is set (via `epd.ParseCable`), and
-unknown flags. For its own checks it logs the error with
+unknown flags. Loop rules: `-eink-loop` needs exactly one of `-eink-png` /
+`-eink-panel`; `-eink-fetch-every`, `-eink-full-every` and `-eink-sleep` are
+errors without `-eink-loop` (detected with `fs.Visit`, so even an explicit
+default like `-eink-sleep=true` counts); both intervals must be at least
+`minLoopInterval` (1m). Their defaults come from `eink.DefaultLoopSettings()`
+(30m, 1h, true), and the parsed settings are checked by the pure
+`validateLoopFlags(opts, loop, set)`, then stored in `opts.loop` by
+`parseFlags` only with `-eink-loop` (zero otherwise, like `cable`). For its own checks it logs the error with
 `slog.Error("invalid flags", ...)` (JSON on stderr) and prints usage to
 `output` itself. Usage printing stays in `parseFlags` on purpose: the
 `FlagSet` already prints usage for `fs.Parse` errors, so both error paths
@@ -135,6 +143,19 @@ merging, and deriving today/homework/upcoming views all live in
   build only compiles the stub (`go list -deps ./cmd/family-dashboard` has
   no `epd7in5v2`). Cross-check with
   `GOOS=linux GOARCH=arm GOARM=6 CGO_ENABLED=0 go build ./cmd/family-dashboard`.
+- The cross-compiled Pi binary, `/family-dashboard-pi` (the `-o` name in
+  [eink-adapter.md](eink-adapter.md)), is in `.gitignore`.
+- `-eink-loop` (with `-eink-png` or `-eink-panel`) is branched on in `main()`
+  before the one-shot and HTTP paths, which are unchanged. It makes
+  `signal.NotifyContext(…, os.Interrupt, syscall.SIGTERM)`, builds the panel
+  (`pngpanel.New` or `epd.New`; a failed `epd.New` logs `opening e-paper
+  panel` and exits 1), and calls `runLoop(ctx, panel, eink.SystemClock{},
+  collector, lunch, weather, settings)`. `runLoop` is the test seam: it wraps
+  `fetchDashboard` + `eink.NewView` as the `eink.ViewSource` and runs
+  `eink.NewLoop(...).Run(ctx)`, which owns the panel's `Sleep`/`Close` (see
+  [eink-adapter.md](eink-adapter.md)). A signal → nil → `e-paper loop
+  stopped`, exit 0; an error (first fetch fails) → `running e-paper loop`,
+  exit 1. `stop()` is called before `os.Exit` since the defer would not run.
 - The `ownerNames` free function is gone — `Collector.Owners()` replaces it,
   computed once in `NewCollector` from the same `NamedSource` pairs used for
   fetching, so the owner list and the fetch list can't drift apart.
@@ -148,16 +169,23 @@ merging, and deriving today/homework/upcoming views all live in
   (stub lunch/weather sources: nil, failing, succeeding), and `showOnce`
   (with `pngpanel.New(tmp)` decoding a 480x800 PNG, and with a call-recording
   fake `eink.Panel`: `Full` once with a 480x800 frame, then `Sleep`, then
-  `Close`, also when `Full` fails);
+  `Close`, also when `Full` fails), and `runLoop` (`fakePanel.onFull`
+  cancels the context, so the real `SystemClock` never sleeps: `[Full Sleep
+  Sleep Close]` with `-eink-sleep`, `[Full Sleep Close]` without — the loop
+  sleeps after every update *and* on shutdown);
   `collector_test.go` (package `dashboard`) covers the fetch/merge/filter
   logic that used to live inline in `handleIndex`.
 
 ## Gotchas & Failure Modes
 - Only `config.Load` failure (missing/malformed config file) and
   `http.ListenAndServe` failure are fatal (`os.Exit(1)`); a failed
-  `-eink-png` export or `-eink-panel` draw also exits 1. Any `parseFlags`
-  error (missing `-config` per ADR-0001, both eink flags, bad `-cable`) is a
-  usage error (`os.Exit(2)`). Individual source
+  `-eink-png` export or `-eink-panel` draw also exits 1, and so does an
+  `-eink-loop` whose panel cannot be opened or whose first fetch fails.
+  A loop stopped by SIGINT/SIGTERM exits 0; later fetch or refresh
+  failures inside the loop are logged and retried, never fatal. Any
+  `parseFlags` error (missing `-config` per ADR-0001, both eink flags, bad
+  `-cable`, a loop-flag rule, an interval under 1m) is a usage error
+  (`os.Exit(2)`). Individual source
   build or fetch failures are not fatal by design — they degrade the
   dashboard (fewer sources), not the whole server.
 - Adapter construction (`buildSource`) now happens once at startup instead

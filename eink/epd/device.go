@@ -14,12 +14,15 @@ type device interface {
 	GPIOInit() error
 	Init() error
 	DisplayImage(img image.Image) error
+	InitPart() error
+	DisplayPart(img image.Image, rect image.Rectangle) error
 	Sleep() error
 	Close() error
 }
 
 // devicePanel drives a device. bounds is the native frame size the device
-// wants.
+// wants. Full calls Init before every full refresh, which also returns the
+// controller from the partial mode Partial puts it in.
 type devicePanel struct {
 	dev    device
 	bounds image.Rectangle
@@ -56,6 +59,30 @@ func (p *devicePanel) Full(frame image.Image) error {
 		return fmt.Errorf("epd: display: %w", err)
 	}
 	slog.Info("full refresh", "refresh_ms", time.Since(start).Milliseconds())
+	return nil
+}
+
+// Partial rotates rect of frame to the native orientation and shows it
+// with a partial refresh. The rest of the panel is left as it is.
+func (p *devicePanel) Partial(frame image.Image, rect image.Rectangle) error {
+	start := time.Now()
+	small, native, err := RotateRect(frame, rect, p.cable)
+	if err != nil {
+		return fmt.Errorf("epd: rotate rect: %w", err)
+	}
+	slog.Info("rotated e-paper rect", "rotate_ms", time.Since(start).Milliseconds(), "cable", p.cable, "native_rect", native.String())
+	if !native.In(p.bounds) {
+		return fmt.Errorf("epd: native rect %v is outside driver bounds %v", native, p.bounds)
+	}
+
+	start = time.Now()
+	if err := p.dev.InitPart(); err != nil {
+		return fmt.Errorf("epd: init part: %w", err)
+	}
+	if err := p.dev.DisplayPart(small, native); err != nil {
+		return fmt.Errorf("epd: display part: %w", err)
+	}
+	slog.Info("partial refresh", "partial_ms", time.Since(start).Milliseconds())
 	return nil
 }
 

@@ -1,6 +1,7 @@
 package epd_test
 
 import (
+	"fmt"
 	"image"
 	"image/color"
 	"testing"
@@ -265,6 +266,101 @@ func TestRotate_ClockRect(t *testing.T) {
 			}
 			if black == 0 {
 				t.Error("native clock rect has no black pixels, want clock glyphs")
+			}
+		})
+	}
+}
+
+// patternFrame is a rendered dashboard with scattered black pixels on top,
+// so every region has a known, uneven pattern.
+func patternFrame(t *testing.T) *image.Gray {
+	t.Helper()
+	now := time.Date(2026, 9, 16, 5, 45, 0, 0, time.UTC)
+	view, err := eink.NewView(nil, nil, nil, nil, nil, nil, now)
+	if err != nil {
+		t.Fatalf("NewView: %v", err)
+	}
+	frame := eink.Render(view)
+	for i := 0; i < eink.ScreenWidth*eink.ScreenHeight; i += 997 {
+		frame.SetGray(i%eink.ScreenWidth, i/eink.ScreenWidth, color.Gray{Y: 0})
+	}
+	return frame
+}
+
+func TestRotateRect(t *testing.T) {
+	frame := patternFrame(t)
+	rects := []struct {
+		name string
+		rect image.Rectangle
+	}{
+		{name: "clock", rect: eink.ClockRect()},
+		{name: "whole frame", rect: image.Rect(0, 0, eink.ScreenWidth, eink.ScreenHeight)},
+		{name: "corner", rect: image.Rect(0, 0, 3, 8)},
+		{name: "odd x edges", rect: image.Rect(5, 792, 479, 800)},
+	}
+	for _, cable := range []epd.Cable{epd.CableLeft, epd.CableRight} {
+		full, err := epd.Rotate(frame, cable)
+		if err != nil {
+			t.Fatalf("Rotate: %v", err)
+		}
+		for _, tt := range rects {
+			t.Run(fmt.Sprintf("%s cable %d", tt.name, cable), func(t *testing.T) {
+				out, native, err := epd.RotateRect(frame, tt.rect, cable)
+				if err != nil {
+					t.Fatalf("RotateRect(%v): %v", tt.rect, err)
+				}
+				if want := nativeRect(tt.rect, cable); native != want {
+					t.Fatalf("native rect = %v, want %v", native, want)
+				}
+				if got, want := out.Bounds(), image.Rect(0, 0, native.Dx(), native.Dy()); got != want {
+					t.Fatalf("bounds = %v, want %v", got, want)
+				}
+				for y := range native.Dy() {
+					for x := range native.Dx() {
+						want := full.GrayAt(native.Min.X+x, native.Min.Y+y).Y
+						if got := out.GrayAt(x, y).Y; got != want {
+							t.Fatalf("pixel (%d, %d) = %d, want Rotate's %d at %v", x, y, got, want, native.Min.Add(image.Pt(x, y)))
+						}
+					}
+				}
+			})
+		}
+	}
+
+	for _, cable := range []epd.Cable{epd.CableLeft, epd.CableRight} {
+		_, native, err := epd.RotateRect(frame, eink.ClockRect(), cable)
+		if err != nil {
+			t.Fatalf("cable %d: RotateRect(ClockRect): %v", cable, err)
+		}
+		if native.Min.X%8 != 0 || native.Max.X%8 != 0 {
+			t.Errorf("cable %d: native clock X edges [%d, %d) are not multiples of 8", cable, native.Min.X, native.Max.X)
+		}
+	}
+}
+
+func TestRotateRect_Errors(t *testing.T) {
+	good := image.NewGray(image.Rect(0, 0, eink.ScreenWidth, eink.ScreenHeight))
+	tests := []struct {
+		name  string
+		frame image.Image
+		rect  image.Rectangle
+		cable epd.Cable
+	}{
+		{name: "empty rect", frame: good, rect: image.Rect(10, 16, 10, 32), cable: epd.CableLeft},
+		{name: "rect outside frame", frame: good, rect: image.Rect(400, 784, 500, 808), cable: epd.CableLeft},
+		{name: "native x not on 8 left", frame: good, rect: image.Rect(16, 90, 248, 170), cable: epd.CableLeft},
+		{name: "native x not on 8 right", frame: good, rect: image.Rect(16, 90, 248, 170), cable: epd.CableRight},
+		{name: "wrong frame size", frame: image.NewGray(image.Rect(0, 0, 800, 480)), rect: eink.ClockRect(), cable: epd.CableLeft},
+		{name: "unknown cable", frame: good, rect: eink.ClockRect(), cable: epd.Cable(7)},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			out, _, err := epd.RotateRect(tt.frame, tt.rect, tt.cable)
+			if err == nil {
+				t.Fatalf("RotateRect(%v, %v, %d) = nil error, want error", tt.frame.Bounds(), tt.rect, tt.cable)
+			}
+			if out != nil {
+				t.Errorf("RotateRect(%v, %v, %d) image = non-nil, want nil", tt.frame.Bounds(), tt.rect, tt.cable)
 			}
 		})
 	}
