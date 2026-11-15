@@ -187,8 +187,7 @@ Notes:
 - The Pi Zero W only supports 2.4 GHz and WPA2 (not WPA3-only). If the router has separate 2.4 and 5 GHz names, use
   the 2.4 GHz one.
 - Verified (Nov 2026): a `home` profile at priority 20 saved next to the Imager's venue profile at priority 0, with
-  `wpa-psk` security on both. **Not yet verified:** that the Pi joins the home network by itself after being powered
-  on at home.
+  `wpa-psk` security on both, and the Pi joins the home network by itself after being powered on at home.
 - To find the Pi on a new network, try `familydash.local` first (mDNS); otherwise look for `familydash` in the
   router's device list.
 
@@ -244,10 +243,5 @@ then verify `kernel.img` exists on `bootfs`.
 
 ## Open questions
 
-- Go driver vs. a separate Python renderer: the hardware supports both; see ADR-0002 and the e-ink adapter design.
-- Refresh strategy: partial refresh of the clock every minute, full refresh of the rest about hourly. Partial-refresh
-  timing and ghosting over a longer period are not yet measured.
-- Refresh loop and service: implemented and deployed with `make deploy` (section 10). Ghosting over a longer period
-  (days) is not yet measured.
-- Switching networks is documented in section 9, but joining the home network by itself at power-on is not yet
-  verified.
+- Refresh strategy: partial refresh of the clock every minute, full refresh at least every 30 minutes (the service's
+  `-eink-full-every`). Ghosting over several days is not yet measured.
